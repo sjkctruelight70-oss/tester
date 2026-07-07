@@ -1,0 +1,1573 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧校园图书馆系统 - 完美恢复版 + 学年交接中心</title>
+    
+    <link rel="icon" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/book-open-reader.svg" type="image/svg+xml">
+    
+    <!-- 核心库 -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> tailwind.config = {}; </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; } 
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .modal { transition: opacity 0.3s ease; }
+        
+        /* 🖨️ 打印机物理校准区 */
+        :root {
+            --print-offset-left: 1.0cm;
+            --print-offset-top: 0.0cm;
+        }
+
+        /* ================= 🌟 修复后的双轨打印引擎 ================= */
+        @media print {
+            /* 隐藏按钮和导航 */
+            .print-hidden { display: none !important; }
+            
+            /* ----------------------------------------------------
+               【模式A】常规表格报表打印 (完全恢复你最初完好的版本)
+               ---------------------------------------------------- */
+            body:not(.barcode-print-mode) { background-color: white !important; }
+            body:not(.barcode-print-mode) main { margin: 0 !important; padding: 0 !important; width: 100% !important; overflow: visible !important; }
+            body:not(.barcode-print-mode) #print-area { display: none !important; }
+            thead { display: table-header-group; } 
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            .print-break-inside-avoid { page-break-inside: avoid; break-inside: avoid; }
+            .shadow-sm, .shadow, .shadow-lg { box-shadow: none !important; border: 1px solid #e2e8f0 !important; }
+
+            /* ----------------------------------------------------
+               【模式B】条码贴纸精确打印 (锁定物理尺寸系)
+               ---------------------------------------------------- */
+            body.barcode-print-mode main { display: none !important; }
+            body.barcode-print-mode nav { display: none !important; }
+            body.barcode-print-mode #print-area { 
+                display: block !important; position: absolute; left: 0; top: 0; 
+                width: 21cm; height: 29.7cm; 
+                padding-top: var(--print-offset-top) !important;
+                padding-left: var(--print-offset-left) !important;
+                margin: 0; box-sizing: border-box; background: white;
+            }
+            body.barcode-print-mode * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+
+        /* 屏幕模拟预览样式 */
+        #print-area:not(.hidden) { display: flex; flex-direction: column; align-items: center; background: #cbd5e1; min-height: 100vh; z-index: 9999; position: fixed; inset: 0; overflow-y: auto; padding-bottom: 2rem; }
+        #print-toolbar { width: 21cm; margin-top: 2rem; background: white; padding: 1rem; border-radius: 0.5rem 0.5rem 0 0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        #print-sheet-preview { position: relative; width: 21cm; min-height: 29.7cm; background: white; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); box-sizing: border-box; overflow: hidden; }
+        
+        /* 贴纸网格定位 */
+        #print-grid, #print-grid-preview { position: absolute; left: var(--print-offset-left); top: var(--print-offset-top); display: grid; grid-template-columns: repeat(3, 6cm); grid-auto-rows: 2cm; gap: 0; }
+        .sticker-item { width: 6cm; height: 2cm; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; border: none !important; page-break-inside: avoid; }
+        .sticker-blank { width: 6cm; height: 2cm; box-sizing: border-box; border: none !important; }
+        
+        .sticker-item-screen { border: 1px dashed #ccc; width: 6cm; height: 2cm; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; }
+        .sticker-blank-screen { border: 1px dashed #e2e8f0; width: 6cm; height: 2cm; box-sizing: border-box; background: #f8fafc; display: flex; justify-content: center; align-items: center; color: #94a3b8; font-size: 10px; }
+
+        /* ===== 🌟 打印多页支持：解除高度截断 ===== */
+        body.barcode-print-mode #print-sheet-preview { overflow: visible !important; }
+        body.barcode-print-mode #print-grid { height: auto !important; overflow: visible !important; }
+        body.barcode-print-mode #print-area { height: auto !important; min-height: 0 !important; }
+        @media print {
+            /* 多页：移除所有固定高度，让内容自然撑开 */
+            #print-area { height: auto !important; min-height: 0 !important; overflow: visible !important; }
+            #print-sheet-preview { overflow: visible !important; }
+            #print-grid { height: auto !important; overflow: visible !important; }
+            .sticker-item, .sticker-blank { overflow: visible !important; }
+        }
+
+        /* ===== 🌟 阅读批量填加工具栏 ===== */
+        #batch-fill-bar { display: grid; grid-template-columns: 140px repeat(7, 1fr); gap: 4px; margin-bottom: 8px; align-items: end; }
+        #batch-fill-bar .bf-label { font-size: 10px; font-weight: 900; text-align: center; padding: 4px 2px; border-radius: 4px 4px 0 0; }
+        #batch-fill-bar .bf-input-wrap { position: relative; }
+        #batch-fill-bar input[type=number] { width: 100%; border: 2px solid #93c5fd; border-radius: 6px 6px 0 0; padding: 6px 8px; font-size: 13px; font-weight: 700; text-align: center; background: #eff6ff; color: #1e40af; outline: none; }
+        #batch-fill-bar input[type=number]:focus { border-color: #2563eb; background: white; }
+        #batch-fill-bar button { width: 100%; padding: 5px 4px; border-radius: 0 0 6px 6px; font-size: 10px; font-weight: 800; cursor: pointer; border: none; transition: opacity 0.15s; }
+        #batch-fill-bar button:hover { opacity: 0.85; }
+        .bf-btn-fill { background: #2563eb; color: white; }
+        .bf-btn-clear { background: #dc2626; color: white; margin-top: 2px; }
+
+        /* ===== 🌟 拖拽填充手柄 ===== */
+        .nilam-input-wrap { position: relative; display: inline-block; width: 100%; }
+        .nilam-input-wrap input[type=number] { padding-right: 20px; }
+        .nilam-fill-handle {
+            position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px;
+            background: #93c5fd; border-radius: 2px 0 4px 0; cursor: crosshair;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; color: white; line-height: 1; user-select: none; z-index: 2;
+        }
+        .nilam-fill-handle::before { content: '≡'; font-size: 11px; font-weight: 900; }
+        .nilam-input-wrap.dragging .nilam-fill-handle { background: #2563eb; }
+        input.fill-dragging { background: #dbeafe !important; border-color: #2563eb !important; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 h-screen overflow-hidden flex flex-col md:flex-row font-sans">
+  <!-- ================= 登录拦截罩 ================= -->
+    <div id="login-screen" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center transition-opacity duration-300 print-hidden">
+        <div class="bg-white p-8 rounded-lg shadow-2xl w-11/12 max-w-sm text-center">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800"><i class="fa-solid fa-school text-blue-600 mr-2"></i>图书馆系统登录</h2>
+            <p class="text-xs text-gray-500 mb-6 font-bold"> | 班主任: 输入班级(如 1M)</p>
+            <input type="password" id="admin-pwd" placeholder="请输入密码" class="w-full border-2 border-gray-200 p-3 rounded-lg mb-4 focus:outline-none focus:border-blue-500 text-center text-lg uppercase" onkeypress="if(event.key==='Enter') window.loginApp()">
+            <button onclick="window.loginApp()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-lg shadow-lg transition">登 录</button>
+        </div>
+    </div>
+
+    <!-- ================= 左侧智能导航 ================= -->
+    <nav id="main-nav" class="hidden bg-white shadow-xl z-10 w-full md:w-56 md:h-full flex-shrink-0 flex md:flex-col justify-around md:justify-start order-last md:order-first absolute md:relative bottom-0 overflow-y-auto print-hidden">
+        <div class="hidden md:flex flex-col items-center justify-center py-6 border-b bg-blue-50">
+            <i class="fa-solid fa-circle-user text-4xl text-blue-600 mb-2"></i>
+            <h1 id="user-role-display" class="text-lg font-bold text-gray-700">加载中...</h1>
+        </div>
+        
+        <!-- 班主任 -->
+        <a href="#" onclick="window.switchTab('teacher-dash')" id="nav-teacher-dash" class="nav-item hidden flex flex-col md:flex-row items-center p-3 md:p-4 text-gray-500 hover:bg-gray-50 md:border-l-4 border-transparent"><i class="fa-solid fa-house-user text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">班级首页 (打卡)</span></a>
+        <a href="#" onclick="window.switchTab('reading')" id="nav-reading" class="nav-item hidden flex flex-col md:flex-row items-center p-3 md:p-4 text-gray-500 hover:bg-gray-50 md:border-l-4 border-transparent"><i class="fa-solid fa-pen-to-square text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">班级 NILAM 录入</span></a>
+        
+        <!-- 管理员/共用 -->
+        <a href="#" onclick="window.switchTab('borrow')" id="nav-borrow" class="nav-item flex flex-col md:flex-row items-center p-3 md:p-4 text-blue-600 bg-blue-50 md:border-l-4 border-blue-600"><i class="fa-solid fa-barcode text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">借还工作台</span></a>
+        <a href="#" onclick="window.switchTab('students')" id="nav-students" class="nav-item flex flex-col md:flex-row items-center p-3 md:p-4 text-gray-500 hover:bg-gray-50 md:border-l-4 border-transparent"><i class="fa-solid fa-users text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">师生名单管理</span></a>
+        <a href="#" onclick="window.switchTab('books')" id="nav-books" class="nav-item hidden flex flex-col md:flex-row items-center p-3 md:p-4 text-gray-500 hover:bg-gray-50 md:border-l-4 border-transparent"><i class="fa-solid fa-book text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">全校图书库</span></a>
+        <a href="#" onclick="window.switchTab('overdue')" id="nav-overdue" class="nav-item hidden flex flex-col md:flex-row items-center p-3 md:p-4 text-red-600 hover:bg-red-50 md:border-l-4 border-transparent"><i class="fa-solid fa-triangle-exclamation text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">逾期追讨名单</span></a>
+        <a href="#" onclick="window.switchTab('borrow-logs')" id="nav-borrow-logs" class="nav-item hidden flex flex-col md:flex-row items-center p-3 md:p-4 text-pink-600 hover:bg-pink-50 md:border-l-4 border-transparent"><i class="fa-solid fa-clock-rotate-left text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">图书借还流水</span></a>
+        <a href="#" onclick="window.switchTab('admin-nilam')" id="nav-admin-nilam" class="nav-item hidden flex flex-col md:flex-row items-center p-3 md:p-4 text-gray-500 hover:bg-gray-50 md:border-l-4 border-transparent"><i class="fa-solid fa-address-book text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">学生阅读档案</span></a>
+        <a href="#" onclick="window.switchTab('report')" id="nav-report" class="nav-item hidden flex flex-col md:flex-row items-center p-3 md:p-4 text-purple-600 hover:bg-purple-50 md:border-l-4 border-transparent"><i class="fa-solid fa-chart-pie text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">NILAM 总报表</span></a>
+        <a href="#" onclick="window.switchTab('usage')" id="nav-usage" class="nav-item hidden flex flex-col md:flex-row items-center p-3 md:p-4 text-orange-600 hover:bg-orange-50 md:border-l-4 border-transparent"><i class="fa-solid fa-shoe-prints text-xl md:mr-3 md:w-6 text-center"></i><span class="text-xs md:text-sm font-bold">进馆打卡记录</span></a>
+    </nav>
+
+    <!-- ================= 主内容渲染区 ================= -->
+    <main id="main-content" class="hidden flex-1 p-4 md:p-8 overflow-y-auto mb-16 md:mb-0">
+        
+        <!-- [班主任] 进馆打卡 -->
+        <section id="teacher-dash" class="hidden h-full flex flex-col items-center justify-center max-w-3xl mx-auto text-center space-y-8">
+            <div><i class="fa-solid fa-chalkboard-user text-6xl text-blue-500 mb-4"></i><h2 class="text-3xl font-bold text-gray-800">欢迎，<span id="dash-class-name" class="text-blue-600"></span> 班主任</h2></div>
+            <button onclick="window.logLibraryVisit()" class="w-64 h-64 bg-gradient-to-br from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 text-white rounded-full shadow-2xl flex flex-col items-center justify-center transform transition hover:scale-105">
+                <i class="fa-solid fa-fingerprint text-6xl mb-4"></i><span class="text-2xl font-black">进图书馆</span><span class="text-sm mt-1 opacity-80">点击打卡登记</span>
+            </button>
+            <div id="dash-last-log" class="text-sm text-gray-500 font-bold bg-white p-3 rounded shadow border">本设备今日尚未打卡</div>
+        </section>
+
+        <!-- [全局] 扫码借还工作台 -->
+        <section id="borrow" class="hidden h-full flex flex-col max-w-5xl mx-auto print-hidden">
+             <div class="bg-white p-6 rounded-xl shadow-sm mb-6 flex flex-col md:flex-row justify-between items-center border">
+                <div><h2 class="text-2xl font-bold text-gray-800 mb-1">借还工作台</h2><p class="text-xs text-gray-500 font-bold">全局借阅限期: <span class="text-blue-600">7 天</span></p></div>
+                <div class="flex mt-4 md:mt-0 bg-gray-200 p-1 rounded-lg">
+                    <button onclick="window.setMode('borrow')" id="btn-mode-borrow" class="px-6 py-2 bg-blue-600 text-white rounded-md font-bold shadow transition">借出</button>
+                    <button onclick="window.setMode('return')" id="btn-mode-return" class="px-6 py-2 text-gray-600 rounded-md font-bold hover:bg-gray-300 transition">归还</button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-xl shadow-sm border">
+                    <div class="mb-6"><label class="block text-sm font-bold text-gray-700 mb-2">1. 扫描借阅人证件 (S开头/教工码)</label><input type="text" id="scan-student-input" class="w-full border-2 p-3 rounded-lg focus:border-blue-500 focus:outline-none text-lg uppercase font-bold" placeholder="请在此扫描/输入" onkeypress="if(event.key==='Enter') window.processScan('student')"></div>
+                    <div><label class="block text-sm font-bold text-gray-700 mb-2">2. 扫描书本条码 (B开头)</label><input type="text" id="scan-book-input" class="w-full border-2 p-3 rounded-lg focus:border-blue-500 focus:outline-none text-lg uppercase font-bold" placeholder="请在此扫描/输入" onkeypress="if(event.key==='Enter') window.processScan('book')"></div>
+                    <button onclick="window.submitBorrowReturn()" id="btn-submit-action" disabled class="mt-8 w-full py-4 bg-gray-400 text-white rounded-lg font-bold text-xl shadow disabled:opacity-50">等待扫描...</button>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border flex flex-col space-y-4">
+                    <div class="flex-1 border-2 border-dashed border-gray-200 rounded-lg p-4 flex flex-col justify-center items-center relative"><span class="absolute top-2 left-2 text-xs font-bold text-gray-400">借阅人信息</span><div id="display-student" class="text-center text-gray-400">等待扫码</div></div>
+                    <div class="flex-1 border-2 border-dashed border-gray-200 rounded-lg p-4 flex flex-col justify-center items-center relative"><span class="absolute top-2 left-2 text-xs font-bold text-gray-400">书本信息</span><div id="display-book" class="text-center text-gray-400">等待扫码</div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- [管理员] 图书资料库 -->
+        <section id="books" class="hidden max-w-full mx-auto print-hidden">
+            <div class="flex flex-col lg:flex-row justify-between items-center mb-4 space-y-4 lg:space-y-0">
+                <h2 class="text-2xl font-bold">全校图书库</h2>
+                <div class="flex flex-1 mx-4 w-full lg:w-auto">
+                    <input type="text" id="search-book-input" placeholder="输入 编号/书名 快速搜索..." class="w-full p-2 border rounded shadow-sm focus:outline-none focus:border-blue-500 font-bold" oninput="window.handleBookSearch()">
+                </div>
+                <div class="flex flex-wrap gap-2 items-center justify-center">
+                    <div class="bg-gray-100 p-1 rounded flex items-center border shadow-sm">
+                        <span class="text-xs text-gray-500 ml-2 mr-1 font-bold">按入库日:</span>
+                        <input type="date" id="barcode-date-filter" class="p-1 border rounded text-xs font-bold text-gray-700 outline-none">
+                        <button onclick="window.printBarcodes('date')" class="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-800 transition ml-1 text-sm font-bold"><i class="fa-solid fa-print"></i></button>
+                    </div>
+                    <button onclick="window.printBarcodes('selected')" class="px-3 py-2 bg-indigo-600 text-white rounded shadow text-sm font-bold hover:bg-indigo-700 transition" title="打印下方表格中勾选的书本"><i class="fa-solid fa-check-square mr-1"></i> 打勾选条码</button>
+                    <button onclick="window.exportBooksToExcel()" class="px-3 py-2 bg-green-600 text-white rounded shadow text-sm font-bold" title="导出全库资料"><i class="fa-solid fa-download"></i></button>
+                    <input type="file" id="excel-book-upload" accept=".xlsx, .xls" class="hidden" onchange="window.importBooksFromExcel(event)">
+                    <button onclick="document.getElementById('excel-book-upload').click()" class="px-3 py-2 bg-blue-500 text-white rounded shadow text-sm font-bold" title="导入Excel书单"><i class="fa-solid fa-upload"></i></button>
+                    <button onclick="window.openBookModal()" class="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 font-bold"><i class="fa-solid fa-plus mr-1"></i>录入新书</button>
+                </div>
+            </div>
+            
+            <div class="flex justify-between items-center mb-2 bg-blue-50 p-2 rounded border border-blue-100">
+                <div class="flex items-center space-x-2">
+                    <label class="text-sm font-bold text-gray-600">排序:</label>
+                    <select id="book-sort-select" class="p-1.5 border rounded text-sm font-bold outline-none" onchange="window.handleBookSearch()">
+                        <option value="title">按书名 (字母/拼音)</option>
+                        <option value="id">按编号</option>
+                        <option value="addedDate">按入库时间 (最新在前)</option>
+                    </select>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <label class="text-sm font-bold text-gray-600">每页展示:</label>
+                    <select id="book-pagesize-select" class="p-1.5 border rounded text-sm font-bold outline-none" onchange="window.handleBookSearch()">
+                        <option value="10">10 条</option><option value="50" selected>50 条</option><option value="100">100 条</option><option value="ALL">全部展示</option>
+                    </select>
+                    <span id="book-total-info" class="text-sm text-gray-500 font-bold ml-2">总计: 0</span>
+                </div>
+            </div>
+
+            <div class="bg-white shadow-sm rounded-t-lg overflow-x-auto border border-b-0 max-h-[60vh] overflow-y-auto relative">
+                <table class="w-full text-left whitespace-nowrap">
+                    <thead class="bg-gray-50 border-b sticky top-0 z-10"><tr><th class="p-4 w-12 text-center"><input type="checkbox" id="check-all-books" onclick="window.toggleAllBooks(this)" class="w-4 h-4 cursor-pointer"></th><th class="p-4">封面</th><th class="p-4">编号/入库日</th><th class="p-4">书名 / 类别</th><th class="p-4">作者/出版社</th><th class="p-4">书架/权限</th><th class="p-4">状态</th><th class="p-4">操作</th></tr></thead>
+                    <tbody id="book-table-body" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+            
+            <div id="book-pagination" class="bg-gray-50 border border-t-0 rounded-b-lg p-3 flex justify-between items-center hidden">
+                <button onclick="window.changeBookPage(-1)" class="px-4 py-1 bg-white border rounded shadow-sm text-sm font-bold hover:bg-gray-100">&laquo; 上一页</button>
+                <span id="book-page-info" class="text-sm font-bold text-blue-600">第 1 / 1 页</span>
+                <button onclick="window.changeBookPage(1)" class="px-4 py-1 bg-white border rounded shadow-sm text-sm font-bold hover:bg-gray-100">下一页 &raquo;</button>
+            </div>
+        </section>
+
+        <!-- [全局] 师生名单管理 -->
+        <section id="students" class="hidden max-w-6xl mx-auto print-hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold" id="student-title">师生名单管理</h2>
+                <div class="flex space-x-2">
+                    <!-- 🌟 学年交接中心 -->
+                    <button onclick="window.openTransitionModal()" class="px-4 py-2 bg-indigo-600 text-white font-bold rounded shadow hover:bg-indigo-700 transition"><i class="fa-solid fa-calendar-check mr-2"></i>学年交接中心</button>
+                    <button onclick="window.openStudentModal()" class="px-4 py-2 bg-blue-600 text-white rounded shadow font-bold"><i class="fa-solid fa-plus mr-2"></i>单人添加</button>
+                    <input type="file" id="excel-upload" accept=".xlsx, .xls" class="hidden" onchange="window.handleExcelUpload(event)">
+                    <button onclick="document.getElementById('excel-upload').click()" class="px-4 py-2 bg-green-600 text-white rounded shadow font-bold"><i class="fa-solid fa-file-excel mr-2"></i>批量导入(Excel)</button>
+                </div>
+            </div>
+            <div id="admin-class-filter" class="mb-2 flex flex-col md:flex-row justify-between items-center hidden bg-blue-50 p-3 rounded-lg border border-blue-100">
+                <div class="flex items-center space-x-2 mb-2 md:mb-0">
+                    <label class="font-bold text-sm text-gray-600">筛选组别:</label>
+                    <select id="filter-class" class="p-2 border rounded shadow-sm focus:outline-none bg-white font-bold" onchange="window.loadStudents()"><option value="ALL">全部班级</option></select>
+                    <button onclick="window.printBarcodes('students')" class="ml-2 px-4 py-2 bg-gray-700 text-white font-bold rounded shadow hover:bg-gray-800 transition"><i class="fa-solid fa-print mr-2"></i>打印此组条码</button>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <label class="text-sm font-bold text-gray-600">名单排序:</label>
+                        <select id="student-sort-select" class="p-1.5 border rounded text-sm font-bold outline-none bg-white" onchange="window.renderStudentTable()">
+                            <option value="nameEn">按英文名 A-Z (默认)</option><option value="id">按证件号</option><option value="className">按班级</option>
+                        </select>
+                    </div>
+                    <button onclick="window.graduateYear6()" class="px-4 py-2 bg-purple-600 text-white font-bold rounded shadow hover:bg-purple-700 transition"><i class="fa-solid fa-graduation-cap mr-2"></i>毕业六年级(移除)</button>
+                </div>
+            </div>
+            <div class="bg-white shadow-sm rounded-lg overflow-y-auto border max-h-[65vh]">
+                <table class="w-full text-left relative">
+                    <thead class="bg-gray-50 border-b sticky top-0 z-10"><tr><th class="p-4">学号(扫码)</th><th class="p-4">姓名 (中英)</th><th class="p-4">所属班级</th><th class="p-4">操作</th></tr></thead>
+                    <tbody id="student-table-body" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- [管理员] 逾期追讨 (支持表格打印) -->
+        <section id="overdue" class="hidden max-w-6xl mx-auto">
+            <div class="flex justify-between items-center mb-6 print-hidden">
+                <h2 class="text-2xl font-bold text-red-600">⚠️ 逾期未还警报</h2>
+                <div class="flex space-x-2">
+                    <button onclick="window.exportToExcel('overdue-table', '逾期未还名单')" class="px-4 py-2 bg-green-600 text-white font-bold rounded shadow"><i class="fa-solid fa-file-excel mr-2"></i>导出Excel</button>
+                    <!-- 恢复报表直接调用 window.print -->
+                    <button onclick="window.triggerReportPrint()" class="px-4 py-2 bg-gray-700 text-white rounded shadow font-bold"><i class="fa-solid fa-print"></i> 打印报表</button>
+                </div>
+            </div>
+            <div class="print-break-inside-avoid">
+                <h2 class="hidden print:block text-2xl font-bold mb-4 text-center border-b pb-2 text-red-700">逾期未还图书清单</h2>
+                <div class="bg-white shadow-sm rounded-lg overflow-hidden border">
+                    <table id="overdue-table" class="w-full text-left">
+                        <thead class="bg-red-50 border-b text-red-800"><tr><th class="p-3">书本编号</th><th class="p-3">书名</th><th class="p-3">借阅人 (班级)</th><th class="p-3">借出日期</th><th class="p-3">截止日期</th><th class="p-3">逾期状态</th><th class="p-3 print-hidden">操作</th></tr></thead>
+                        <tbody id="overdue-table-body" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- [班主任] 班级 NILAM 录入 -->
+        <section id="reading" class="hidden max-w-full mx-auto">
+            <div class="bg-white p-6 rounded-xl shadow-sm mb-6 border print-hidden border-blue-200">
+                <h2 class="text-2xl font-bold mb-2">阅读量登记 - <span id="nilam-class-display" class="text-blue-600"></span></h2>
+                <p class="text-sm text-red-500 mb-4 font-bold">📌 指南：老师只需填入学生本子【累计至今】的总数字。系统底层会自动减去【历史累计值】，算出净增量发送给图书馆报表。</p>
+                <div class="flex space-x-4 items-end max-w-sm">
+                    <div class="flex-1"><label class="block text-sm text-gray-600 font-bold mb-1">目标登记月份</label><input type="month" id="reading-month-select" class="w-full p-2 border-2 border-blue-300 rounded focus:outline-none font-bold text-blue-800"></div>
+                    <button onclick="window.loadReadingList()" class="px-6 py-2 bg-blue-600 text-white rounded shadow font-bold hover:bg-blue-700">拉取全班名单</button>
+                </div>
+            </div>
+
+            <!-- 🌟 批量填加工具栏 (显示在表格正上方) -->
+            <div id="batch-fill-bar" class="hidden print-hidden bg-gradient-to-r from-blue-50 to-indigo-50 p-3 rounded-lg border-2 border-blue-200 mb-3">
+                <div class="bf-label text-blue-800"><i class="fa-solid fa-bolt mr-1"></i>批量速填</div>
+                <!-- AINS累计 -->
+                <div class="bf-input-wrap"><div class="bf-label bg-blue-100 text-blue-800">① AINS 累计</div><input type="number" id="bf_digital" min="0" placeholder="当年总计" oninput="window.batchFillOnInput()"><button class="bf-btn-fill" onclick="window.batchFillColumn('digital')"><i class="fa-solid fa-arrow-down"></i> 填入整列</button><button class="bf-btn-clear" onclick="window.batchFillClear('digital')"><i class="fa-solid fa-eraser"></i> 清空</button></div>
+                <!-- Bukan Buku -->
+                <div class="bf-input-wrap"><div class="bf-label bg-gray-100 text-gray-700">② Bkn Buku</div><input type="number" id="bf_bukanBuku" min="0" placeholder="非书数量" oninput="window.batchFillOnInput()"><button class="bf-btn-fill" onclick="window.batchFillColumn('bukanBuku')"><i class="fa-solid fa-arrow-down"></i> 填入整列</button><button class="bf-btn-clear" onclick="window.batchFillClear('bukanBuku')"><i class="fa-solid fa-eraser"></i> 清空</button></div>
+                <!-- Fiksyen -->
+                <div class="bf-input-wrap"><div class="bf-label bg-gray-100 text-gray-700">③ Fiksyen</div><input type="number" id="bf_fiksyen" min="0" placeholder="小说" oninput="window.batchFillOnInput()"><button class="bf-btn-fill" onclick="window.batchFillColumn('fiksyen')"><i class="fa-solid fa-arrow-down"></i> 填入整列</button><button class="bf-btn-clear" onclick="window.batchFillClear('fiksyen')"><i class="fa-solid fa-eraser"></i> 清空</button></div>
+                <!-- Bukan Fiksyen -->
+                <div class="bf-input-wrap"><div class="bf-label bg-gray-100 text-gray-700">④ Bkn Fiksyen</div><input type="number" id="bf_bukanFiksyen" min="0" placeholder="非小说" oninput="window.batchFillOnInput()"><button class="bf-btn-fill" onclick="window.batchFillColumn('bukanFiksyen')"><i class="fa-solid fa-arrow-down"></i> 填入整列</button><button class="bf-btn-clear" onclick="window.batchFillClear('bukanFiksyen')"><i class="fa-solid fa-eraser"></i> 清空</button></div>
+                <!-- BM -->
+                <div class="bf-input-wrap"><div class="bf-label bg-green-100 text-green-800">⑤ BM</div><input type="number" id="bf_bm" min="0" placeholder="马来文" oninput="window.batchFillOnInput()"><button class="bf-btn-fill" onclick="window.batchFillColumn('bm')"><i class="fa-solid fa-arrow-down"></i> 填入整列</button><button class="bf-btn-clear" onclick="window.batchFillClear('bm')"><i class="fa-solid fa-eraser"></i> 清空</button></div>
+                <!-- BI -->
+                <div class="bf-input-wrap"><div class="bf-label bg-green-100 text-green-800">⑥ BI</div><input type="number" id="bf_bi" min="0" placeholder="英文" oninput="window.batchFillOnInput()"><button class="bf-btn-fill" onclick="window.batchFillColumn('bi')"><i class="fa-solid fa-arrow-down"></i> 填入整列</button><button class="bf-btn-clear" onclick="window.batchFillClear('bi')"><i class="fa-solid fa-eraser"></i> 清空</button></div>
+                <!-- Lain -->
+                <div class="bf-input-wrap"><div class="bf-label bg-green-100 text-green-800">⑦ Lain</div><input type="number" id="bf_lain" min="0" placeholder="其他语言" oninput="window.batchFillOnInput()"><button class="bf-btn-fill" onclick="window.batchFillColumn('lain')"><i class="fa-solid fa-arrow-down"></i> 填入整列</button><button class="bf-btn-clear" onclick="window.batchFillClear('lain')"><i class="fa-solid fa-eraser"></i> 清空</button></div>
+            </div>
+
+            <div id="reading-list-container" class="hidden bg-white shadow-sm rounded-lg p-6 border overflow-x-auto print-break-inside-avoid">
+                <h2 class="hidden print:block text-2xl font-bold mb-4 text-center border-b pb-2">班级阅读记录表 - <span id="print-class-name"></span></h2>
+                <table class="w-full text-left whitespace-nowrap mb-4 border-collapse" id="reading-data-table">
+                    <thead>
+                        <tr class="bg-blue-50">
+                            <th rowspan="2" class="p-2 border text-center">学号</th><th rowspan="2" class="p-2 border text-center">姓名</th>
+                            <th rowspan="2" class="p-2 border bg-yellow-50 text-center text-yellow-700"><div class="text-xs">当年总计</div><div class="text-lg font-black" id="th-year"></div></th>
+                            <th rowspan="2" class="p-2 border bg-orange-50 text-center text-orange-700"><div class="text-xs">1-6年级</div><div class="text-lg font-black">历史总计</div></th>
+                            <th colspan="4" class="p-2 border text-center text-blue-700">BAHAN (请填入最新累计)</th><th colspan="3" class="p-2 border text-center text-green-700">BAHASA (请填入最新累计)</th>
+                        </tr>
+                        <tr class="bg-gray-50 text-xs text-center"><th class="p-2 border bg-blue-100 text-blue-800">1. AINS (Digital)</th><th class="p-2 border">2. Bkn Buku</th><th class="p-2 border">3. Fiksyen</th><th class="p-2 border">4. Bkn Fiksyen</th><th class="p-2 border bg-green-100 text-green-800">5. BM</th><th class="p-2 border bg-green-100 text-green-800">6. BI</th><th class="p-2 border bg-green-100 text-green-800">7. Lain</th></tr>
+                    </thead>
+                    <tbody id="reading-table-body"></tbody>
+                </table>
+                <div class="flex space-x-4 print-hidden mt-6">
+                    <button onclick="window.exportToExcel('reading-data-table', '班级阅读记录')" class="w-1/4 py-4 bg-green-100 text-green-800 font-bold rounded shadow"><i class="fa-solid fa-file-excel mr-2"></i>导出</button>
+                    <button onclick="window.triggerReportPrint()" class="w-1/4 py-4 bg-gray-500 text-white font-bold rounded shadow hover:bg-gray-600"><i class="fa-solid fa-print mr-2"></i>打印表格</button>
+                    <button onclick="window.saveReadingStats()" class="w-1/2 py-4 bg-blue-600 text-white font-bold rounded shadow-xl hover:bg-blue-700 text-lg transition transform hover:scale-[1.01]">💾 自动核算并保存上传</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- [管理员] 学生阅读档案 -->
+        <section id="admin-nilam" class="hidden max-w-4xl mx-auto">
+            <div class="flex justify-between items-center mb-6 print-hidden">
+                <h2 class="text-2xl font-bold">全校阅读档案 (总累计)</h2>
+                <div class="flex space-x-2">
+                    <span class="text-sm font-bold text-gray-500 mt-2">选年份(任一天):</span>
+                    <input type="date" id="admin-nilam-date" class="p-2 border rounded font-bold bg-yellow-50 text-yellow-800" onchange="window.loadAdminNilam()">
+                    <select id="admin-nilam-filter" class="p-2 border rounded font-bold text-blue-800 bg-blue-50" onchange="window.loadAdminNilam()"><option value="">-- 请选择班级 --</option></select>
+                    <button onclick="window.exportToExcel('admin-nilam-table', '全校阅读档案')" class="px-4 py-2 bg-green-600 text-white font-bold rounded shadow"><i class="fa-solid fa-file-excel mr-2"></i>导出</button>
+                    <button onclick="window.triggerReportPrint()" class="px-4 py-2 bg-gray-700 text-white rounded shadow font-bold"><i class="fa-solid fa-print"></i> 打印</button>
+                </div>
+            </div>
+            <div class="print-break-inside-avoid">
+                <h2 class="hidden print:block text-2xl font-bold mb-4 text-center border-b pb-2">阅读档案统计表 - <span id="print-admin-class"></span> (<span id="print-admin-year"></span>年度)</h2>
+                <div class="bg-white shadow-sm rounded-lg overflow-hidden border">
+                    <table id="admin-nilam-table" class="w-full text-left">
+                        <thead class="bg-gray-50 border-b"><tr><th class="p-4">学号</th><th class="p-4">姓名</th><th class="p-4 text-center bg-yellow-50 text-yellow-700 font-bold">当年阅读数</th><th class="p-4 text-center bg-orange-50 text-orange-700 font-bold">历史总累计(1-6年)</th></tr></thead>
+                        <tbody id="admin-nilam-tbody" class="divide-y divide-gray-100"><tr><td colspan="4" class="p-8 text-center text-gray-400 font-bold">请在上方选择班级查看</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- [管理员] 借还流水日志 -->
+        <section id="borrow-logs" class="hidden max-w-6xl mx-auto">
+            <div class="flex justify-between items-center mb-6 print-hidden">
+                <h2 class="text-2xl font-bold text-pink-700">图书借还流水历史</h2>
+                <div class="flex items-center space-x-2">
+                    <input type="date" id="log-start-date" class="p-2 border rounded font-bold text-gray-600 text-sm">
+                    <span class="font-bold text-gray-400">至</span>
+                    <input type="date" id="log-end-date" class="p-2 border rounded font-bold text-gray-600 text-sm">
+                    <button onclick="window.loadBorrowLogs()" class="px-4 py-2 bg-pink-100 text-pink-700 rounded font-bold hover:bg-pink-200 transition"><i class="fa-solid fa-search mr-2"></i>检索</button>
+                    <button onclick="window.exportToExcel('borrow-logs-table', '图书借还流水')" class="px-4 py-2 bg-green-600 text-white font-bold rounded shadow"><i class="fa-solid fa-file-excel"></i></button>
+                    <button onclick="window.triggerReportPrint()" class="px-4 py-2 bg-gray-700 text-white rounded shadow font-bold"><i class="fa-solid fa-print"></i></button>
+                </div>
+            </div>
+            <div class="print-break-inside-avoid">
+                <h2 class="hidden print:block text-2xl font-bold mb-4 text-center border-b pb-2 text-pink-700">图书借还流水单 <span id="print-log-date" class="text-lg text-gray-500 ml-2"></span></h2>
+                <div class="bg-white shadow-sm rounded-lg overflow-hidden border">
+                    <table id="borrow-logs-table" class="w-full text-left">
+                        <thead class="bg-pink-50 border-b text-pink-800"><tr><th class="p-3">日期时间</th><th class="p-3">动作</th><th class="p-3">借阅人</th><th class="p-3">书本编号</th><th class="p-3">书名</th></tr></thead>
+                        <tbody id="borrow-logs-tbody" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- [管理员] 进馆打卡记录 -->
+        <section id="usage" class="hidden max-w-4xl mx-auto">
+            <div class="flex justify-between items-center mb-6 print-hidden">
+                <h2 class="text-2xl font-bold text-orange-600">进馆打卡监控记录</h2>
+                <div class="flex items-center space-x-2">
+                    <input type="date" id="usage-start-date" class="p-2 border rounded font-bold text-xs text-gray-600">
+                    <span class="text-gray-400 font-bold text-sm">至</span>
+                    <input type="date" id="usage-end-date" class="p-2 border rounded font-bold text-xs text-gray-600">
+                    <button onclick="window.loadUsageLogs()" class="px-4 py-2 bg-orange-100 text-orange-700 font-bold rounded hover:bg-orange-200 transition"><i class="fa-solid fa-search"></i></button>
+                    <button onclick="window.exportToExcel('usage-table-data', '进馆记录')" class="px-4 py-2 bg-green-600 text-white font-bold rounded shadow"><i class="fa-solid fa-file-excel"></i> 导出</button>
+                    <button onclick="window.triggerReportPrint()" class="px-4 py-2 bg-gray-700 text-white rounded shadow font-bold"><i class="fa-solid fa-print"></i> 打印</button>
+                </div>
+            </div>
+            <div class="print-break-inside-avoid">
+                <h2 class="hidden print:block text-2xl font-bold mb-4 text-center border-b pb-2 text-orange-600">进馆打卡流水单 <span id="print-usage-date" class="text-sm text-gray-500"></span></h2>
+                <div class="bg-white shadow-sm rounded-lg overflow-hidden border">
+                    <table id="usage-table-data" class="w-full text-left">
+                        <thead class="bg-orange-50 border-b text-orange-800"><tr><th class="p-4">打卡日期</th><th class="p-4">打卡时间</th><th class="p-4">班级(系统记录)</th></tr></thead>
+                        <tbody id="usage-table-body" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- [管理员] 全校 NILAM 总报表 -->
+        <section id="report" class="hidden max-w-6xl mx-auto">
+            <div class="bg-white p-6 rounded-xl shadow-sm mb-6 border flex justify-between items-center print-hidden border-purple-200">
+                <div>
+                    <h2 class="text-2xl font-bold text-purple-700 mb-1">全校 NILAM 净增量总报表</h2>
+                    <p class="text-xs text-gray-500 font-bold">自动汇聚各班主任提交的【新增量】并提取</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="month" id="report-month" class="border-2 border-purple-300 p-2 rounded text-purple-800 font-bold focus:outline-none">
+                    <button onclick="window.generateReport()" class="px-6 py-2 bg-purple-600 text-white rounded shadow-lg font-bold hover:bg-purple-700 transition">生成数据</button>
+                    <button onclick="window.triggerReportPrint()" class="px-4 py-2 bg-gray-700 text-white rounded shadow font-bold"><i class="fa-solid fa-print"></i> 打印</button>
+                </div>
+            </div>
+            <div class="print-break-inside-avoid">
+                <h2 class="hidden print:block text-2xl font-bold mb-4 text-center text-purple-800 border-b pb-2">月度 NILAM 统计总表 - <span id="print-report-month"></span></h2>
+                <div id="report-content" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div class="p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"><div class="text-xs text-gray-500 font-bold mb-1">1. AINS (Digital)</div><div class="text-3xl font-black text-blue-600" id="r-digital">0</div></div>
+                    <div class="p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"><div class="text-xs text-gray-500 font-bold mb-1">2. BACAAN BUKAN BUKU</div><div class="text-3xl font-black text-blue-600" id="r-bukanBuku">0</div></div>
+                    <div class="p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"><div class="text-xs text-gray-500 font-bold mb-1">3. BACAAN BUKU FIKSYEN</div><div class="text-3xl font-black text-blue-600" id="r-fiksyen">0</div></div>
+                    <div class="p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"><div class="text-xs text-gray-500 font-bold mb-1">4. BACAAN BUKAN FIKSYEN</div><div class="text-3xl font-black text-blue-600" id="r-bukanFiksyen">0</div></div>
+                    <div class="p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"><div class="text-xs text-gray-500 font-bold mb-1">5. BAHASA MELAYU</div><div class="text-3xl font-black text-green-600" id="r-bm">0</div></div>
+                    <div class="p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"><div class="text-xs text-gray-500 font-bold mb-1">6. BAHASA INGGERIS</div><div class="text-3xl font-black text-green-600" id="r-bi">0</div></div>
+                    <div class="p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"><div class="text-xs text-gray-500 font-bold mb-1">7. LAIN-LAIN BAHASA</div><div class="text-3xl font-black text-green-600" id="r-lain">0</div></div>
+                    
+                    <div class="p-6 bg-blue-50 border-2 border-blue-200 rounded-lg shadow-sm col-span-1 md:col-span-2 lg:col-span-1">
+                        <div class="text-sm text-blue-800 font-bold">8. JUMLAH KESELURUHAN (BAHAN) <br><span class="text-xs font-normal">(项目 1+2+3+4)</span></div>
+                        <div class="text-5xl font-black text-blue-700 mt-2" id="r-totalBahan">0</div>
+                    </div>
+                    <div class="p-6 bg-green-50 border-2 border-green-200 rounded-lg shadow-sm col-span-1 md:col-span-2 lg:col-span-1">
+                        <div class="text-sm text-green-800 font-bold">9. JUMLAH KESELURUHAN (BAHASA) <br><span class="text-xs font-normal">(项目 5+6+7)</span></div>
+                        <div class="text-5xl font-black text-green-700 mt-2" id="r-totalBahasa">0</div>
+                    </div>
+                    <div class="p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-300 rounded-lg shadow-md col-span-1 md:col-span-2 lg:col-span-1 flex flex-col justify-center relative overflow-hidden">
+                        <div class="text-sm text-purple-800 font-bold z-10">10. PURATA BACAAN <br><span class="text-xs font-normal text-purple-600">(总计 / 全校注册人数)</span></div>
+                        <div class="text-5xl font-black text-purple-700 mt-2 z-10" id="r-purata">0.00</div>
+                        <div class="text-xs font-bold mt-2 text-purple-600 z-10" id="r-totalStudents">系统记录总人数: 0</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ================= 条码打印预览专属浮层 ================= -->
+    <!-- 🌟 当它被激活时，HTML会通过JS改变body的类，触发对应的CSS @media print -->
+    <div id="print-area" class="hidden">
+        <div id="print-toolbar" class="print-hidden">
+            <div>
+                <h2 id="print-title" class="text-xl font-bold text-gray-800">A4 标签纸打印预览</h2>
+                <p class="text-xs text-blue-600 font-bold mt-1">严格规格: 3列x13行，单张 6cm x 2cm。已支持智能跳格定位。</p>
+                <p class="text-xs text-red-500 font-bold mt-1">⚠️ 请在弹窗设置：【边距:无】及【缩放:100%或默认】</p>
+            </div>
+            <div class="space-x-3">
+                <button onclick="window.closePrintArea()" class="px-5 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300">取消返回</button>
+                <button onclick="window.triggerBarcodePrint()" class="px-5 py-2 bg-blue-600 text-white font-bold rounded shadow-lg hover:bg-blue-700"><i class="fa-solid fa-print mr-2"></i>开始物理打印</button>
+            </div>
+        </div>
+        <!-- 绝对定位画板区 -->
+        <div id="print-sheet-preview">
+            <div id="print-grid" class="my-print-grid"></div>
+        </div>
+    </div>
+
+    <!-- ================= 核心弹窗：书本录入与 AI 识别 ================= -->
+    <div id="modal-book" class="modal fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center print-hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-11/12 max-w-5xl overflow-hidden flex flex-col md:flex-row">
+            <div class="bg-gray-50 p-6 md:w-1/3 border-r flex flex-col">
+                <h3 class="font-bold text-lg mb-4 text-purple-600"><i class="fa-solid fa-microchip mr-2"></i>AI 智能辅助提取</h3>
+                <div class="w-full h-48 bg-white border-2 border-dashed border-gray-300 flex items-center justify-center relative overflow-hidden mb-4 rounded cursor-pointer hover:border-purple-400 transition" onclick="document.getElementById('form-book-file').click()">
+                    <img id="form-book-cover-img" src="" class="hidden w-full h-full object-contain">
+                    <span id="form-book-cover-text" class="text-gray-400 font-bold flex flex-col items-center"><i class="fa-solid fa-camera mb-2 text-3xl"></i>点击拍摄版权页</span>
+                    <input type="file" id="form-book-file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event)">
+                </div>
+                <input type="hidden" id="form-book-base64">
+                <button onclick="window.runOCR()" id="btn-ocr" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded shadow font-bold mb-4 transition"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i>开始 AI 提取文字</button>
+                <textarea id="ocr-result" class="w-full flex-1 border-2 p-2 text-sm rounded focus:outline-none focus:border-purple-400 font-mono shadow-inner bg-gray-50" readonly placeholder="提取结果将显示在此，您可以手动复制文字填入右侧表格..."></textarea>
+            </div>
+            <div class="p-6 md:w-2/3 flex flex-col max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-4 pb-2 border-b"><h3 class="font-bold text-xl text-blue-600" id="book-modal-title">录入新书</h3><button onclick="window.closeModal('book')" class="text-gray-400 hover:text-red-500 transition"><i class="fa-solid fa-xmark text-2xl"></i></button></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+                    <div class="col-span-1 md:col-span-2"><label class="block text-xs font-bold text-gray-500 mb-1">唯一编号 *</label><input type="text" id="form-book-id" class="w-full border-2 border-blue-200 p-2 rounded uppercase font-black text-blue-800 focus:outline-none focus:border-blue-500 bg-blue-50"></div>
+                    <div class="col-span-1 md:col-span-2"><label class="block text-xs font-bold text-gray-500 mb-1">书名 *</label><input type="text" id="form-book-title" class="w-full border-2 p-2 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-700"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">类别属性</label>
+                        <select id="form-book-category" class="w-full border p-2 rounded font-bold bg-yellow-50 text-yellow-800 focus:outline-none focus:border-yellow-500">
+                            <option value="故事书">故事书</option><option value="非故事书">非故事书</option><option value="低年级">低年级</option><option value="小说">小说</option><option value="漫画">漫画</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">作者</label><input type="text" id="form-book-author" class="w-full border p-2 rounded focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">出版社</label><input type="text" id="form-book-publisher" class="w-full border p-2 rounded focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">ISBN</label><input type="text" id="form-book-isbn" class="w-full border p-2 rounded font-mono focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">出版年份</label><input type="number" id="form-book-year" class="w-full border p-2 rounded focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">价格 (RM)</label><input type="number" step="0.01" id="form-book-price" class="w-full border p-2 rounded focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">总页数</label><input type="number" id="form-book-pages" class="w-full border p-2 rounded focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">语言</label><input type="text" id="form-book-language" class="w-full border p-2 rounded focus:outline-none focus:border-blue-500" placeholder="如: 中文/英文/马来文"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">书架位置</label><input type="text" id="form-book-shelf" class="w-full border p-2 rounded font-bold text-gray-600 focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">借阅权限</label>
+                        <select id="form-book-access" class="w-full border p-2 rounded font-bold text-blue-700 bg-blue-50 focus:outline-none focus:border-blue-500">
+                            <option value="public">公开 (所有可借)</option><option value="teacher_only">锁定 (只限老师)</option>
+                        </select>
+                    </div>
+                </div>
+                <button onclick="window.saveBook()" class="w-full mt-6 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded shadow-lg text-lg transition">💾 确认并保存</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 弹窗：单人录入 -->
+    <div id="modal-student" class="modal fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center print-hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-11/12 max-w-md overflow-hidden">
+            <div class="bg-blue-600 text-white p-4 flex justify-between items-center"><h3 class="font-bold text-lg" id="std-modal-title">添加记录</h3><button onclick="window.closeModal('student')" class="hover:text-red-300 transition"><i class="fa-solid fa-xmark text-xl"></i></button></div>
+            <div class="p-6 space-y-4">
+                <div><label class="block text-xs font-bold text-gray-500 mb-1">唯一证件/学号</label><input type="text" id="form-std-id" class="w-full border-2 p-3 rounded uppercase font-black text-blue-700 focus:outline-none focus:border-blue-500 bg-blue-50"></div>
+                <div><label class="block text-xs font-bold text-gray-500 mb-1">中文姓名</label><input type="text" id="form-std-namecn" class="w-full border-2 p-3 rounded focus:outline-none focus:border-blue-500 font-bold"></div>
+                <div><label class="block text-xs font-bold text-gray-500 mb-1">英文姓名</label><input type="text" id="form-std-nameen" class="w-full border-2 p-3 rounded focus:outline-none focus:border-blue-500 font-bold"></div>
+                <div><label class="block text-xs font-bold text-gray-500 mb-1">身份/班级</label><select id="form-std-class" class="w-full border-2 p-3 rounded bg-gray-100 font-bold text-gray-600 focus:outline-none"></select></div>
+            </div>
+            <div class="p-4 border-t bg-gray-50 flex justify-end space-x-3"><button onclick="window.closeModal('student')" class="px-6 py-2 border-2 rounded font-bold text-gray-600 hover:bg-gray-100 transition">取消</button><button onclick="window.saveStudent()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded shadow transition">提交</button></div>
+        </div>
+    </div>
+
+    <!-- 全局提示器 -->
+    <div id="toast" class="fixed top-4 right-4 text-white px-6 py-4 rounded shadow-2xl transform translate-x-[150%] transition-transform duration-300 z-[9999] font-bold flex items-center print-hidden">
+        <span id="toast-icon" class="mr-3 text-xl"></span><span id="toast-msg"></span>
+    </div>
+
+    <!-- 🌟 学年交接中心弹窗 -->
+    <div id="modal-transition" class="modal fixed inset-0 bg-indigo-900 bg-opacity-80 z-50 hidden items-center justify-center p-4 print-hidden">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border-8 border-indigo-500">
+            <div class="bg-indigo-600 p-8 text-white flex justify-between items-center">
+                <div>
+                    <h3 class="text-3xl font-black"><i class="fa-solid fa-calendar-check mr-3"></i>学年交接控制台</h3>
+                    <p class="text-indigo-200 font-bold mt-1 uppercase text-xs tracking-widest">年度数据自动结转核心</p>
+                </div>
+                <button onclick="window.closeModal('transition')" class="text-white/50 hover:text-white transition"><i class="fa-solid fa-xmark text-4xl"></i></button>
+            </div>
+            <div class="p-8 space-y-6">
+                <!-- 第一步 -->
+                <div class="flex items-start gap-4 p-5 bg-red-50 border border-red-100 rounded-2xl">
+                    <div class="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center text-white shrink-0 shadow-lg"><i class="fa-solid fa-graduation-cap text-xl"></i></div>
+                    <div>
+                        <h4 class="font-black text-red-900 text-lg">第一步：毕业大清理</h4>
+                        <p class="text-sm text-red-600 font-bold mt-1">系统将永久删除所有真正六年级学生档案（6M/6K/6B/6H/6U）。PRA 学生不受影响！</p>
+                        <button onclick="window.step1Graduate()" class="mt-4 bg-red-600 text-white px-8 py-3 rounded-xl font-black text-sm shadow-lg hover:bg-red-700 transition">执行毕业离校清理</button>
+                    </div>
+                </div>
+                <!-- 第二步 -->
+                <div class="flex items-start gap-4 p-5 bg-blue-50 border border-blue-100 rounded-2xl">
+                    <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white shrink-0 shadow-lg"><i class="fa-solid fa-arrow-up-right-dots text-xl"></i></div>
+                    <div>
+                        <h4 class="font-black text-blue-900 text-lg">第二步：全校自动升班 (如 1M → 2M)</h4>
+                        <p class="text-sm text-blue-600 font-bold mt-1">自动将 1-5 年级学生的班级数字加 1。原有的阅读记录将完美保留！（PRA不参与升班）</p>
+                        <button onclick="window.step2AutoPromote()" class="mt-4 bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-sm shadow-lg hover:bg-blue-700 transition">执行自动升班逻辑</button>
+                    </div>
+                </div>
+                <!-- 最终提示 -->
+                <div class="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                    <p class="text-xs text-yellow-800 font-bold">
+                        <i class="fa-solid fa-circle-info mr-1"></i> 
+                        完成以上两步后，请关闭此窗口。接着使用【批量导入】功能，导入新一届【一年级新生】的名单，即可完成整个学年交接！
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<!-- ================= 底层逻辑引擎 ================= -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, setDoc, deleteDoc, addDoc, getDocs, updateDoc, writeBatch, serverTimestamp, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // Firebase 配置 (请勿修改)
+    const firebaseConfig = { apiKey: "AIzaSyA9IFoYJGb6LZJ_CU_C7MXaht6j_lW4xUk", authDomain: "library-tl.firebaseapp.com", projectId: "library-tl" };
+    const app = initializeApp(firebaseConfig);
+    const db = initializeFirestore(app, { localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()}) });
+
+    // 🌟 全局常量与状态 (含学年交接系统)
+    const ALL_CLASSES = ['1M','1K','1B','1H','2M','2K','2B','2H','3M','3K','3B','3H','3U','4M','4K','4B','4H','5M','5K','5B','5H','6M','6K','6B','6H','6U','PRA CERIA','PRA TUNAS'];
+    const STAFF_CLASS = 'TEACHER';
+    const UNASSIGNED_CLASS = '未分配'; // 学年交接中心专用：已剥离/待分配
+    const BORROW_PERIOD_DAYS = 7; 
+    
+    let currentUserRole = null; 
+    let currentClass = null; 
+    let currentMode = 'borrow'; 
+    let sStd = null; 
+    let sBook = null; 
+    let allBooksCache = []; 
+    let ocrHighResBase64 = "";
+    let isEditingBook = false; 
+
+    // 分页与排序内存
+    let bookCurrentPage = 1;
+    let allStudentsCache = []; 
+
+    // 辅助函数
+    function getStandardDate(dateObj = new Date()) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`; }
+    function formatName(en, cn) { return `${en||''} ${cn?`(${cn})`:''}`.trim() || '未知'; }
+
+    // Toast 提示引擎
+    let toastTimeout;
+    window.showToast = (msg, type = 'success') => {
+        const toast = document.getElementById('toast'); const icon = document.getElementById('toast-icon'); document.getElementById('toast-msg').innerText = msg;
+        clearTimeout(toastTimeout); toast.className = `fixed top-4 right-4 text-white px-6 py-4 rounded shadow-2xl transform transition-transform duration-300 z-[9999] font-bold flex items-center print-hidden `;
+        if (type === 'success') { toast.classList.add('bg-green-600'); icon.innerHTML = '<i class="fa-solid fa-circle-check"></i>'; }
+        else if (type === 'error') { toast.classList.add('bg-red-600'); icon.innerHTML = '<i class="fa-solid fa-circle-xmark"></i>'; }
+        else if (type === 'warning') { toast.classList.add('bg-yellow-500', 'text-gray-900'); icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>'; }
+        else if (type === 'loading') { toast.classList.add('bg-blue-600'); icon.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
+        toast.classList.remove('translate-x-[150%]'); if (type !== 'loading') toastTimeout = setTimeout(() => toast.classList.add('translate-x-[150%]'), 3000); 
+    }
+    
+    window.closeModal = (t) => { document.getElementById(`modal-${t}`).classList.add('hidden'); document.getElementById(`modal-${t}`).classList.remove('flex'); }
+    window.exportToExcel = (tableId, baseFilename) => { window.showToast("生成Excel中...", "loading"); setTimeout(() => { const table = document.getElementById(tableId); const wb = XLSX.utils.table_to_book(table, { sheet: "Sheet1" }); XLSX.writeFile(wb, `${baseFilename}_${getStandardDate()}.xlsx`); window.showToast("导出成功！", "success"); }, 500); }
+
+    // ================== 1. 系统入口登录控制 ==================
+    window.loginApp = () => {
+        const input = document.getElementById('admin-pwd').value.trim().toUpperCase();
+        if (input === 'ADMIN123') {
+            currentUserRole = 'admin'; currentClass = 'ALL'; document.getElementById('user-role-display').innerText = "图书馆管理员";
+            ['nav-books','nav-admin-nilam','nav-overdue','nav-borrow-logs','nav-report','nav-usage','admin-class-filter'].forEach(id => {const el = document.getElementById(id); if(el) el.classList.remove('hidden');});
+            
+            const filterClass = document.getElementById('filter-class');
+            filterClass.innerHTML = `<option value="ALL">全部师生名单</option><option value="${STAFF_CLASS}" class="text-blue-600 font-black">👩‍🏫 教职工专区</option><option value="${UNASSIGNED_CLASS}" class="text-red-500 font-black">⚠️ 待分配/已剥离</option>`;
+            ALL_CLASSES.forEach(c => filterClass.innerHTML += `<option value="${c}">${c} 班</option>`);
+            
+            const nFilter = document.getElementById('admin-nilam-filter');
+            nFilter.innerHTML = '<option value="">-- 请选择班级 --</option>';
+            ALL_CLASSES.forEach(c => nFilter.innerHTML += `<option value="${c}">${c} 班</option>`);
+
+            const today = getStandardDate(); 
+            document.getElementById('admin-nilam-date').value = today;
+            document.getElementById('report-month').value = today.substring(0, 7);
+            document.getElementById('log-start-date').value = today; document.getElementById('log-end-date').value = today; 
+            document.getElementById('usage-start-date').value = today; document.getElementById('usage-end-date').value = today;
+
+            finishLogin('borrow');
+        } else if (ALL_CLASSES.includes(input)) {
+            currentUserRole = 'teacher'; currentClass = input; document.getElementById('user-role-display').innerText = `${input} 班主任`;
+            ['nav-teacher-dash','nav-reading'].forEach(id => {const el=document.getElementById(id); if(el) el.classList.remove('hidden');});
+            document.getElementById('dash-class-name').innerText = input; document.getElementById('nilam-class-display').innerText = input; document.getElementById('student-title').innerText = `${input} 班学生名单`; document.getElementById('print-class-name').innerText = input;
+            finishLogin('teacher-dash');
+        } else window.showToast("密码或班级输入错误", "error");
+    }
+    function finishLogin(tab) { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('main-nav').classList.remove('hidden'); document.getElementById('main-content').classList.remove('hidden'); window.switchTab(tab); }
+
+    window.switchTab = (tabId) => {
+        ['teacher-dash', 'borrow', 'books', 'students', 'reading', 'admin-nilam', 'borrow-logs', 'overdue', 'report', 'usage'].forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); const nav = document.getElementById('nav-' + id); if(nav) nav.className = nav.className.replace(/text-[a-z]+-600 bg-[a-z]+-50 border-t-2 md:border-t-0 md:border-l-4 border-[a-z]+-600/g, "text-gray-500 hover:bg-gray-50 md:border-l-4 border-transparent"); });
+        document.getElementById(tabId).classList.remove('hidden');
+        let c = 'blue'; if(tabId==='report')c='purple'; if(tabId==='usage')c='orange'; if(tabId==='teacher-dash')c='green'; if(tabId==='admin-nilam')c='purple'; if(tabId==='borrow-logs')c='pink'; if(tabId==='overdue')c='red';
+        const act = document.getElementById('nav-' + tabId); if(act) act.className = act.className.replace("text-gray-500 hover:bg-gray-50 md:border-l-4 border-transparent", `text-${c}-600 border-t-2 md:border-t-0 md:border-l-4 border-${c}-600 bg-${c}-50`);
+        if(tabId==='books'&&currentUserRole==='admin') window.loadBooks(); if(tabId==='students') window.loadStudents(); if(tabId==='borrow-logs'&&currentUserRole==='admin') window.loadBorrowLogs(); if(tabId==='overdue'&&currentUserRole==='admin') window.loadOverdueBooks(); if(tabId==='usage'&&currentUserRole==='admin') window.loadUsageLogs();
+    }
+
+    // ================== 2. 扫码借还核心引擎 ==================
+    window.setMode = (mode) => {
+        currentMode = mode; sStd = null; sBook = null; 
+        document.getElementById('btn-mode-borrow').className = mode === 'borrow' ? "px-6 py-2 bg-blue-600 text-white rounded-md font-bold shadow transition" : "px-6 py-2 text-gray-600 rounded-md font-bold hover:bg-gray-300 transition";
+        document.getElementById('btn-mode-return').className = mode === 'return' ? "px-6 py-2 bg-blue-600 text-white rounded-md font-bold shadow transition" : "px-6 py-2 text-gray-600 rounded-md font-bold hover:bg-gray-300 transition";
+        document.getElementById('scan-student-input').value = ''; document.getElementById('scan-book-input').value = '';
+        updateBorrowUI();
+        document.getElementById(mode === 'borrow' ? 'scan-student-input' : 'scan-book-input').focus();
+    }
+
+    window.processScan = async (type) => {
+        window.showToast("数据核验中...", "loading");
+        const inputId = type === 'student' ? 'scan-student-input' : 'scan-book-input';
+        const code = document.getElementById(inputId).value.trim().toUpperCase(); if(!code) return window.showToast("条码不能为空", "warning");
+        
+        try {
+            const snap = await getDoc(doc(db, type === 'student' ? "students" : "books", code));
+            if(snap.exists()) {
+                if(type === 'student') { 
+                    sStd = { id: snap.id, ...snap.data() }; 
+                    let identity = sStd.className === STAFF_CLASS ? "👨‍🏫 教职工" : "🧑‍🎓 学生";
+                    window.showToast(`✅ ${identity}验证成功: ${sStd.nameCn || sStd.nameEn}`, "success"); 
+                    document.getElementById('scan-book-input').focus(); 
+                } else { 
+                    sBook = { id: snap.id, ...snap.data() }; 
+                    if (currentMode === 'borrow' && sBook.status === 'out') { window.showToast("❌ 拦截：此书已被借出！", "error"); sBook = null; } 
+                    else if (currentMode === 'return' && sBook.status === 'in') { window.showToast("ℹ️ 此书在馆内，无需归还", "warning"); sBook = null; } 
+                    else if (currentMode === 'borrow' && sBook.accessLevel === 'teacher_only' && (!sStd || sStd.className !== STAFF_CLASS)) { window.showToast("❌ 权限不足：此书限定教职工借阅", "error"); sBook = null; } 
+                    else window.showToast(`✅ 图书验证成功: ${sBook.title}`, "success");
+                }
+            } else { window.showToast(`❌ 查无此条码 (${code})`, "error"); type === 'student' ? sStd = null : sBook = null; }
+        } catch(e) { window.showToast("数据库通讯失败", "error"); }
+        updateBorrowUI();
+    }
+
+    function updateBorrowUI() {
+        const stdUI = document.getElementById('display-student'), bookUI = document.getElementById('display-book'), btn = document.getElementById('btn-submit-action');
+        
+        let stdHtml = '<div class="text-gray-400">等待扫码</div>';
+        if(sStd) {
+            let badge = sStd.className === STAFF_CLASS ? '<span class="bg-blue-600 text-white px-2 py-1 rounded shadow">教职工</span>' : `<span class="bg-blue-50 text-gray-700 border px-2 py-1 rounded">${sStd.className}</span>`;
+            stdHtml = `<div class="text-xl font-black text-blue-700">${formatName(sStd.nameEn, sStd.nameCn)}</div><div class="mt-2 text-gray-600 font-bold">${badge} | 证件: ${sStd.id}</div>`;
+        }
+        stdUI.innerHTML = stdHtml;
+        
+        bookUI.innerHTML = sBook ? `<div class="flex items-center w-full"><img src="${sBook.cover||''}" class="h-20 w-14 object-cover mr-4 rounded shadow border"><div><div class="text-lg font-black text-blue-700 truncate w-48" title="${sBook.title}">《${sBook.title}》</div><div class="text-xs text-gray-500 font-mono mt-1 bg-gray-100 inline-block px-1 rounded">条码: ${sBook.id}</div></div></div>` : '<div class="text-gray-400">等待扫码</div>';
+        
+        if ((currentMode === 'borrow' && sStd && sBook) || (currentMode === 'return' && sBook)) {
+            btn.disabled = false; btn.innerText = `按下回车 (Enter) 确认${currentMode==='borrow'?'借阅':'归还'}`; 
+            btn.className = "mt-8 w-full py-4 bg-green-600 text-white rounded-lg font-black text-xl shadow-lg hover:bg-green-700 transition cursor-pointer";
+        } else {
+            btn.disabled = true; btn.innerText = "等待扫描及验证..."; btn.className = "mt-8 w-full py-4 bg-gray-400 text-white rounded-lg font-bold text-xl shadow disabled:opacity-50";
+        }
+    }
+
+    window.submitBorrowReturn = async () => { 
+        if(!sBook) return; window.showToast("云端同步处理中...", "loading");
+        const todayStr = getStandardDate();
+        let logData = { bookId: sBook.id, bookTitle: sBook.title, action: currentMode, timestamp: serverTimestamp(), dateStr: todayStr, timeStr: new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'}) };
+
+        try {
+            if (currentMode === 'borrow') {
+                let dueD = new Date(); dueD.setDate(dueD.getDate() + BORROW_PERIOD_DAYS);
+                await updateDoc(doc(db, "books", sBook.id), { status: 'out', borrowerId: sStd.id, borrowerName: formatName(sStd.nameEn, sStd.nameCn), borrowerClass: sStd.className, borrowDate: todayStr, dueDate: getStandardDate(dueD) });
+                logData.studentId = sStd.id; logData.studentName = formatName(sStd.nameEn, sStd.nameCn); logData.className = sStd.className;
+                window.showToast("🎉 借书成功！", "success");
+            } else {
+                logData.studentId = sBook.borrowerId || '未知'; logData.studentName = sBook.borrowerName || '早期借出'; logData.className = sBook.borrowerClass || '-';
+                if(sBook.dueDate) { const dueT = new Date(sBook.dueDate).getTime(); const nowT = new Date(todayStr).getTime(); if(nowT > dueT) window.showToast(`归还成功！⚠️ 提醒：该书已逾期 ${Math.ceil((nowT - dueT)/(1000*60*60*24))} 天`, "warning"); else window.showToast("🎉 归还成功！", "success"); } else window.showToast("🎉 归还成功！", "success");
+                await updateDoc(doc(db, "books", sBook.id), { status: 'in', borrowerId: null, borrowerName: null, borrowerClass: null, borrowDate: null, dueDate: null });
+            }
+            await addDoc(collection(db, "borrowLogs"), logData); window.setMode(currentMode); 
+        } catch(e) { window.showToast("操作中断，请检查网络", "error"); }
+    }
+    window.addEventListener('keydown', (e) => { if(e.key === 'Enter' && sBook && document.activeElement.tagName !== 'INPUT') window.submitBorrowReturn(); });
+
+
+    // ================== 3. 全校图书库管理引擎 (排序与分页) ==================
+    window.loadBooks = async () => {
+        const tbody = document.getElementById('book-table-body'); tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-blue-500 font-bold"><i class="fa-solid fa-spinner fa-spin mr-2"></i>全库数据提取中...</td></tr>';
+        const snap = await getDocs(collection(db, "books")); allBooksCache = []; snap.forEach(d => allBooksCache.push({id: d.id, ...d.data()})); 
+        bookCurrentPage = 1; window.handleBookSearch(); 
+    }
+
+    window.handleBookSearch = () => {
+        const q = document.getElementById('search-book-input').value.trim().toLowerCase(); 
+        const sortType = document.getElementById('book-sort-select').value;
+        const pageSizeStr = document.getElementById('book-pagesize-select').value;
+        
+        let filtered = allBooksCache.filter(b => (b.id||'').toLowerCase().includes(q) || (b.title||'').toLowerCase().includes(q) || (b.author||'').toLowerCase().includes(q));
+        
+        filtered.sort((a, b) => {
+            if (sortType === 'title') return (a.title || '').localeCompare(b.title || '', 'zh-Hans-CN', { sensitivity: 'accent' });
+            if (sortType === 'id') return (a.id || '').localeCompare(b.id || '');
+            if (sortType === 'addedDate') { const da = a.addedDate || ''; const db = b.addedDate || ''; return db.localeCompare(da); } 
+            return 0;
+        });
+
+        document.getElementById('book-total-info').innerText = `总计: ${filtered.length} 本`;
+        const paginationUI = document.getElementById('book-pagination');
+        
+        let pagedData = filtered;
+        if (pageSizeStr !== 'ALL') {
+            const size = parseInt(pageSizeStr);
+            const maxPage = Math.ceil(filtered.length / size) || 1;
+            if (bookCurrentPage > maxPage) bookCurrentPage = maxPage;
+            if (bookCurrentPage < 1) bookCurrentPage = 1;
+            const startIdx = (bookCurrentPage - 1) * size;
+            pagedData = filtered.slice(startIdx, startIdx + size);
+            paginationUI.classList.remove('hidden');
+            document.getElementById('book-page-info').innerText = `第 ${bookCurrentPage} / ${maxPage} 页`;
+        } else {
+            paginationUI.classList.add('hidden');
+        }
+
+        renderBookTable(pagedData);
+    }
+    
+    window.changeBookPage = (step) => {
+        const q = document.getElementById('search-book-input').value.trim().toLowerCase(); 
+        const filteredLength = allBooksCache.filter(b => (b.id||'').toLowerCase().includes(q) || (b.title||'').toLowerCase().includes(q)).length;
+        const size = parseInt(document.getElementById('book-pagesize-select').value);
+        const maxPage = Math.ceil(filteredLength / size) || 1;
+        bookCurrentPage += step;
+        if (bookCurrentPage < 1) bookCurrentPage = 1;
+        if (bookCurrentPage > maxPage) bookCurrentPage = maxPage;
+        window.handleBookSearch();
+    }
+
+    function renderBookTable(data) {
+        const tbody = document.getElementById('book-table-body');
+        if(data.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center font-bold text-gray-500">此页无数据</td></tr>'; return; }
+        
+        let htmlStr = ''; 
+        data.forEach(b => {
+            let stIcon = b.status === 'in' ? '<span class="text-green-700 font-bold bg-green-100 px-2 py-1 rounded">在馆</span>' : '<span class="text-orange-600 font-bold bg-orange-100 px-2 py-1 rounded">借出</span>';
+            let ac = b.accessLevel === 'teacher_only' ? '<span class="text-purple-600 font-bold text-xs"><i class="fa-solid fa-lock"></i>限教师</span>' : '<span class="text-gray-400 text-xs">公开</span>';
+            htmlStr += `<tr class="hover:bg-blue-50 transition border-b"><td class="p-2 text-center"><input type="checkbox" class="book-checkbox w-4 h-4 cursor-pointer" value="${b.id}"></td><td class="p-2"><img src="${b.cover||''}" class="w-10 h-14 object-cover border"></td><td class="p-2 font-mono font-bold">${b.id}<br><span class="text-[10px] font-normal text-gray-400">${b.addedDate||'-'}</span></td><td class="p-2"><div class="font-bold text-blue-800 text-base truncate w-64" title="${b.title}">《${b.title}》</div><div class="text-xs text-gray-500 bg-yellow-100 px-1 inline-block rounded">${b.category||''}</div></td><td class="p-2 text-sm">${b.author||'-'}<br><span class="text-[10px] text-gray-400">${b.publisher||'-'}</span></td><td class="p-2 text-sm font-bold text-gray-600">${b.shelf||'-'}<br>${ac}</td><td class="p-2">${stIcon}</td><td class="p-2 flex space-x-2"><button onclick="window.editBook('${b.id}')" class="text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-100 p-2 rounded transition shadow-sm"><i class="fa-solid fa-pen"></i></button><button onclick="window.deleteDocItem('books','${b.id}')" class="text-red-600 hover:text-white hover:bg-red-600 bg-red-100 p-2 rounded transition shadow-sm"><i class="fa-solid fa-trash"></i></button></td></tr>`; 
+        });
+        tbody.innerHTML = htmlStr; document.getElementById('check-all-books').checked = false;
+    }
+
+    window.toggleAllBooks = (source) => { const checkboxes = document.querySelectorAll('.book-checkbox'); checkboxes.forEach(cb => cb.checked = source.checked); }
+
+    // CRUD 图书
+    window.deleteDocItem = async (c, id) => { if(confirm(`危！确认永久删除 ${id} ?`)) { await deleteDoc(doc(db, c, id)); window.showToast("已删除","success"); c==='students'?window.loadStudents():window.loadBooks(); } }
+    window.openBookModal = () => { isEditingBook = false; document.getElementById('book-modal-title').innerText = "新书入库"; document.getElementById('form-book-id').disabled = false; document.getElementById('form-book-id').classList.remove('bg-gray-200'); ['id','title','author','publisher','isbn','year','price','pages','language','shelf','base64'].forEach(k=>document.getElementById(`form-book-${k}`).value=''); document.getElementById('form-book-category').value = '故事书'; document.getElementById('form-book-access').value = 'public'; document.getElementById('form-book-cover-img').classList.add('hidden'); document.getElementById('form-book-cover-text').classList.remove('hidden'); document.getElementById('ocr-result').value = ''; ocrHighResBase64 = ''; document.getElementById('modal-book').classList.remove('hidden'); document.getElementById('modal-book').classList.add('flex'); }
+    
+    window.editBook = async (id) => { 
+        isEditingBook = true; 
+        document.getElementById('book-modal-title').innerText = "✏️ 编辑资料"; window.showToast("读取中...","loading");
+        const snap = await getDoc(doc(db, "books", id)); if(!snap.exists()) return window.showToast("查无此书","error"); const b = snap.data(); window.showToast("加载完成","success");
+        document.getElementById('form-book-id').value = id; document.getElementById('form-book-id').disabled = true; document.getElementById('form-book-id').classList.add('bg-gray-200');
+        document.getElementById('form-book-title').value = b.title||''; document.getElementById('form-book-author').value = b.author||''; document.getElementById('form-book-category').value = b.category||'故事书'; document.getElementById('form-book-publisher').value = b.publisher||''; document.getElementById('form-book-isbn').value = b.isbn||''; document.getElementById('form-book-year').value = b.year||''; document.getElementById('form-book-price').value = b.price||''; document.getElementById('form-book-pages').value = b.pages||''; document.getElementById('form-book-language').value = b.language||''; document.getElementById('form-book-shelf').value = b.shelf||''; document.getElementById('form-book-access').value = b.accessLevel||'public'; document.getElementById('form-book-base64').value = b.cover||'';
+        if(b.cover) { document.getElementById('form-book-cover-img').src = b.cover; document.getElementById('form-book-cover-img').classList.remove('hidden'); document.getElementById('form-book-cover-text').classList.add('hidden'); } else { document.getElementById('form-book-cover-img').classList.add('hidden'); document.getElementById('form-book-cover-text').classList.remove('hidden'); }
+        document.getElementById('ocr-result').value = ''; ocrHighResBase64 = ''; document.getElementById('modal-book').classList.remove('hidden'); document.getElementById('modal-book').classList.add('flex'); 
+    }
+    
+    // ================= 🌟 带有防呆拦截的保存引擎 =================
+    window.saveBook = async () => { 
+        const id = document.getElementById('form-book-id').value.trim().toUpperCase(); 
+        if(!id || !document.getElementById('form-book-title').value.trim()) {
+            return window.showToast("编号和书名必填！", "warning"); 
+        }
+
+        window.showToast("正在核验数据库...", "loading");
+
+        try {
+            // 🌟 核心防呆拦截：只有在录入【新书】时才去检查是否存在
+            if (!isEditingBook) {
+                const checkSnap = await getDoc(doc(db, "books", id));
+                if (checkSnap.exists()) {
+                    // 如果发现此编号已存在，强制中断保存！
+                    alert(`🚨 严重警告！\n\n您输入的书本编号 [ ${id} ] 已经存在于资料库中（书名：《${checkSnap.data().title}》）。\n\n请使用全新的编号，以防覆盖原有书籍资料！`);
+                    return window.showToast("录入失败：编号重复", "error");
+                }
+            }
+
+            // 组装数据
+            const data = { 
+                title: document.getElementById('form-book-title').value, 
+                author: document.getElementById('form-book-author').value, 
+                category: document.getElementById('form-book-category').value, 
+                publisher: document.getElementById('form-book-publisher').value, 
+                isbn: document.getElementById('form-book-isbn').value, 
+                year: document.getElementById('form-book-year').value, 
+                price: document.getElementById('form-book-price').value, 
+                pages: document.getElementById('form-book-pages').value, 
+                language: document.getElementById('form-book-language').value, 
+                shelf: document.getElementById('form-book-shelf').value, 
+                accessLevel: document.getElementById('form-book-access').value, 
+                cover: document.getElementById('form-book-base64').value 
+            }; 
+            
+            // 新书初始化参数
+            if(!isEditingBook) { 
+                data.status = 'in'; 
+                data.addedDate = getStandardDate(); 
+            } 
+            
+            window.showToast("保存上传中...", "loading");
+            await setDoc(doc(db,"books",id), data, {merge: true}); 
+            window.showToast("🎉 成功入库", "success"); 
+            window.closeModal('book'); 
+            window.loadBooks(); 
+            
+        } catch (e) { 
+            window.showToast("网络异常，保存失败", "error"); 
+        }
+    }
+
+    // 批量导入导出
+    window.exportBooksToExcel = () => {
+        if(allBooksCache.length === 0) return window.showToast("空库", "warning"); window.showToast("组装中...", "loading");
+        const exportData = allBooksCache.map(b => ({ "编号": b.id, "书名": b.title, "类别": b.category, "作者": b.author, "出版社": b.publisher, "ISBN": b.isbn, "出版年": b.year, "价钱": b.price, "页数": b.pages, "语言": b.language, "书架": b.shelf, "借阅权限": b.accessLevel==='teacher_only'?'教师专属':'公开' }));
+        const ws = XLSX.utils.json_to_sheet(exportData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "图书库备份"); XLSX.writeFile(wb, `全校图书库_${getStandardDate()}.xlsx`); window.showToast("导出完成", "success");
+    }
+    window.importBooksFromExcel = (e) => {
+        const f = e.target.files[0]; if(!f) return; const r = new FileReader();
+        r.onload = async (evt) => {
+            window.showToast("批量写入...", "loading");
+            try {
+                const wb = XLSX.read(evt.target.result, {type:'binary'}); const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); const batch = writeBatch(db); let c = 0;
+                json.forEach(row => { const id = row['编号']||row['系统编号']; if(id) { batch.set(doc(db,"books",id.toString().trim().toUpperCase()), { title:row['书名']||'', category:row['类别']||'故事书', author:row['作者']||'', publisher:row['出版社']||'', isbn:row['ISBN']||'', year:row['出版年']||row['年份']||'', price:row['价格']||row['价钱']||'', pages:row['页数']||'', language:row['语言']||'', shelf:row['书架']||'', accessLevel:(row['借阅权限']&&row['借阅权限'].includes('教师'))?'teacher_only':'public', status:'in', addedDate: getStandardDate() }, {merge:true}); c++; } });
+                await batch.commit(); window.showToast(`导入 ${c} 本`, "success"); window.loadBooks();
+            } catch(err) { window.showToast("解析失败", "error"); }
+        }; r.readAsBinaryString(f);
+    }
+
+    // AI 高清图片处理
+    window.handleImageUpload = (e) => { const f = e.target.files[0]; if(!f) return; const r = new FileReader(); r.onload = e => { const img = new Image(); img.src = e.target.result; img.onload = () => { const cvs = document.createElement('canvas'); const ctx = cvs.getContext('2d'); cvs.width=300; cvs.height=img.height*(300/img.width); ctx.drawImage(img,0,0,cvs.width,cvs.height); const dbImg = cvs.toDataURL('image/jpeg', 0.6); document.getElementById('form-book-base64').value = dbImg; document.getElementById('form-book-cover-img').src = dbImg; document.getElementById('form-book-cover-img').classList.remove('hidden'); document.getElementById('form-book-cover-text').classList.add('hidden'); cvs.width=1200; cvs.height=img.height*(1200/img.width); ctx.drawImage(img,0,0,cvs.width,cvs.height); ocrHighResBase64 = cvs.toDataURL('image/jpeg', 0.9); } }; r.readAsDataURL(f); }
+    window.runOCR = async () => { if(!ocrHighResBase64) return alert("请先上传照片"); const btn=document.getElementById('btn-ocr'); btn.disabled=true; btn.innerHTML='AI 处理中...'; try { const res = await Tesseract.recognize(ocrHighResBase64, 'eng+msa+chi_sim', { logger: m => { if(m.status === 'recognizing text') btn.innerHTML = `识别进度: ${Math.round(m.progress * 100)}%`; }}); document.getElementById('ocr-result').value = res.data.text; window.showToast("提取完成", "success"); } catch(e) { window.showToast("失败", "error"); } btn.disabled=false; btn.innerHTML='开始提取文字'; }
+
+
+    // ================== 🌟 双轨打印引擎 (报表恢复正常 + 条码精准控制) ==================
+    
+    // 恢复：专门用于打印报表的函数 (触发系统默认弹窗)
+    window.triggerReportPrint = () => { window.print(); }
+    
+    // 专门用于打印物理条码的控制台
+    window.closePrintArea = () => { 
+        document.getElementById('print-area').classList.add('hidden'); 
+        document.body.classList.remove('barcode-print-mode'); // 退出条码打印模式
+    }
+    
+    window.printBarcodes = async (type) => {
+        let items = [];
+        try {
+            if (type === 'selected') {
+                const checkboxes = document.querySelectorAll('.book-checkbox:checked');
+                if (checkboxes.length === 0) return window.showToast("请先在列表中勾选需要打印的书本！", "warning");
+                const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+                items = allBooksCache.filter(b => selectedIds.includes(b.id));
+                document.getElementById('print-title').innerText = `已选 ${items.length} 张条码 (损坏补印)`;
+            } 
+            else if (type === 'date') { 
+                const dFilter = document.getElementById('barcode-date-filter').value;
+                if(!dFilter) { if(!confirm("未选日期，将打印全库条码！渲染可能卡顿数秒，确定继续？")) { return; } }
+                document.getElementById('print-title').innerText = dFilter ? `图书条码 (批次: ${dFilter})` : "全库图书条码";
+                window.showToast("构建中，请稍候...", "loading");
+                let q = collection(db, "books"); if(dFilter) q = query(q, where("addedDate", "==", dFilter));
+                const snap = await getDocs(q); snap.forEach(d => items.push({ id: d.id, title: d.data().title })); 
+            } 
+            else if (type === 'students') { 
+                const tc = document.getElementById('filter-class') ? document.getElementById('filter-class').value : currentClass; 
+                document.getElementById('print-title').innerText = tc === 'ALL' ? "全校证件条码" : (tc === STAFF_CLASS ? "教职工证件条码" : `${tc} 学生条码`); 
+                window.showToast("抓取名单中...", "loading");
+                const snap = await getDocs(tc === 'ALL' ? collection(db,"students") : query(collection(db,"students"), where("className", "==", tc))); 
+                snap.forEach(d => items.push({ id: d.id, title: formatName(d.data().nameEn, d.data().nameCn) })); 
+            }
+            
+            // 🌟 智能跳格询问
+            let skipCount = 0;
+            const userInput = prompt(`系统检测到将打印 ${items.length} 张条码。\n\n请问这张A4贴纸【前面需要空出几个格子】不打印？\n(如果是一张全新的纸，请直接点击确定或输入 0)`, "0");
+            if (userInput === null) return; // 用户取消
+            skipCount = parseInt(userInput) || 0;
+            
+            renderStickers(items, skipCount);
+        } catch(e) { window.showToast("获取数据失败", "error"); console.error(e); }
+    }
+
+    function renderStickers(items, skipCount = 0) {
+        // 开启条码专用打印模式
+        document.body.classList.add('barcode-print-mode');
+        document.getElementById('print-area').classList.remove('hidden'); 
+        
+        const grid = document.getElementById('print-grid');
+        grid.innerHTML = items.length === 0 ? '<div class="col-span-full text-center text-red-500 font-bold p-8">无数据可打印</div>' : '';
+        if(items.length === 0) return;
+        
+        window.showToast("正在渲染条码，请勿操作浏览器", "loading");
+        const fragment = document.createDocumentFragment();
+        
+        // 🌟 1. 注入跳格透明方块
+        for (let i = 0; i < skipCount; i++) {
+            const blankBox = document.createElement('div');
+            blankBox.className = "sticker-blank sticker-blank-screen"; 
+            blankBox.innerHTML = `已跳过空位 ${i+1}`;
+            fragment.appendChild(blankBox);
+        }
+
+        // 🌟 2. 注入真实内容框
+        items.forEach((item, index) => { 
+            const box = document.createElement('div'); box.className = "sticker-item sticker-item-screen"; 
+            box.innerHTML = `<svg id="barcode-${index}"></svg><div class="text-[9px] font-black text-center truncate w-full px-1 text-gray-900 leading-none" style="margin-top:-2px">${item.title || '未知'}</div>`; 
+            fragment.appendChild(box); 
+        });
+        grid.appendChild(fragment);
+        
+        // 🌟 3. 渲染条码 (加入过滤空格防崩溃)
+        setTimeout(() => {
+            let errorCount = 0;
+            items.forEach((item, index) => { 
+                try {
+                    if(!item.id) throw new Error("ID 空白");
+                    const safeId = item.id.toString().replace(/\s+/g, ''); // 强行删掉所有空格
+                    JsBarcode(`#barcode-${index}`, safeId, { format: "CODE128", displayValue: true, fontSize: 10, textMargin: 0, fontOptions: "bold", margin: 0, width: 1.5, height: 38 }); 
+                } catch (err) {
+                    errorCount++;
+                    document.getElementById(`barcode-${index}`).outerHTML = `<div class="text-xs text-red-500 font-bold mt-2">非法条码格式: ${item.id}</div>`;
+                }
+            });
+            if(errorCount > 0) window.showToast(`排版完成，但发现 ${errorCount} 个非法编号无法生成条码`, "warning");
+            else window.showToast(`排版完美！(已跳过 ${skipCount} 格) 可以点击打印了`, "success");
+        }, 100); 
+    }
+    
+    // 给物理预览控制台用的触发器
+    window.triggerBarcodePrint = () => { window.print(); }
+
+    // ================== 4. 师生名单双轨管理 (🌟 含排序) ==================
+    window.loadStudents = async () => { 
+        const tbody = document.getElementById('student-table-body'); tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-blue-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>名单同步中...</td></tr>'; 
+        let tc = currentUserRole==='teacher' ? currentClass : document.getElementById('filter-class').value; 
+        try {
+            const snap = await getDocs(tc==='ALL' ? collection(db,"students") : query(collection(db,"students"), where("className","==",tc))); 
+            allStudentsCache = [];
+            snap.forEach(d => { allStudentsCache.push({ id: d.id, ...d.data() }); }); 
+            window.renderStudentTable();
+        } catch (e) { tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">连接失败</td></tr>'; }
+    }
+
+    // 🌟 学生名单渲染引擎 (带按英文名 A-Z 排序)
+    window.renderStudentTable = () => {
+        const tbody = document.getElementById('student-table-body');
+        const sortType = document.getElementById('student-sort-select') ? document.getElementById('student-sort-select').value : 'nameEn';
+        
+        if (allStudentsCache.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="p-12 text-center text-gray-400 font-bold text-lg">无人员数据</td></tr>'; return; }
+
+        let sorted = [...allStudentsCache];
+        sorted.sort((a, b) => {
+            if (sortType === 'nameEn') { const enA = (a.nameEn || '').toUpperCase(); const enB = (b.nameEn || '').toUpperCase(); return enA.localeCompare(enB); }
+            if (sortType === 'id') return (a.id || '').localeCompare(b.id || '');
+            if (sortType === 'className') return (a.className || '').localeCompare(b.className || '');
+            return 0;
+        });
+
+        let htmlStr = '';
+        sorted.forEach(s => { 
+            let badge = '';
+            if (s.className === STAFF_CLASS) badge = '<span class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg shadow-md font-black tracking-widest"><i class="fa-solid fa-user-tie mr-1"></i>教职工</span>';
+            else if (s.className === UNASSIGNED_CLASS) badge = '<span class="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg shadow-md font-black tracking-widest animate-pulse border border-red-700"><i class="fa-solid fa-triangle-exclamation mr-1"></i>待分配/已剥离</span>';
+            else badge = `<span class="bg-blue-50 text-blue-800 border border-blue-200 font-black px-3 py-1.5 rounded-lg shadow-sm">${s.className}</span>`;
+            htmlStr+=`<tr class="hover:bg-blue-50 transition border-b"><td class="p-4 font-mono font-black text-blue-800">${s.id}</td><td class="p-4 font-black text-gray-700 text-lg">${formatName(s.nameEn, s.nameCn)}</td><td class="p-4">${badge}</td><td class="p-4"><button onclick="window.editStudent('${s.id}','${s.nameCn||''}','${s.nameEn||''}','${s.className}')" class="text-blue-600 bg-blue-100 p-2 rounded transition shadow-sm mr-2"><i class="fa-solid fa-pen"></i></button><button onclick="window.deleteDocItem('students','${s.id}')" class="text-red-600 bg-red-100 p-2 rounded"><i class="fa-solid fa-trash"></i></button></td></tr>`; 
+        }); 
+        tbody.innerHTML = htmlStr;
+    }
+    
+    // CRUD
+    window.openStudentModal = () => { 
+        document.getElementById('std-modal-title').innerText="建立档案"; ['id','namecn','nameen'].forEach(k=>document.getElementById(`form-std-${k}`).value=''); 
+        document.getElementById('form-std-id').disabled = false; document.getElementById('form-std-id').classList.remove('bg-gray-200'); 
+        const ci = document.getElementById('form-std-class'); ci.innerHTML = '';
+        if(currentUserRole==='teacher') { ci.innerHTML = `<option value="${currentClass}">${currentClass}</option>`; ci.disabled=true; } 
+        else { ci.innerHTML = `<option value="${STAFF_CLASS}">👨‍🏫 教职工 (老师)</option>`; ALL_CLASSES.forEach(c => ci.innerHTML += `<option value="${c}">${c} 班学生</option>`); ci.innerHTML += `<option value="${UNASSIGNED_CLASS}">⚠️ 待分配/已剥离</option>`; ci.disabled=false; } 
+        document.getElementById('modal-student').classList.remove('hidden'); document.getElementById('modal-student').classList.add('flex'); 
+    }
+    
+    window.editStudent = (id, cn, en, cls) => { 
+        document.getElementById('std-modal-title').innerText="✏️ 修正档案"; document.getElementById('form-std-id').value = id; document.getElementById('form-std-id').disabled = true; document.getElementById('form-std-id').classList.add('bg-gray-200'); document.getElementById('form-std-namecn').value = cn!=='undefined'?cn:''; document.getElementById('form-std-nameen').value = en!=='undefined'?en:''; 
+        const ci = document.getElementById('form-std-class'); ci.innerHTML = '';
+        if(currentUserRole==='teacher') { ci.innerHTML = `<option value="${currentClass}">${currentClass}</option>`; ci.disabled=true; } 
+        else { ci.innerHTML = `<option value="${STAFF_CLASS}">👨‍🏫 教职工 (老师)</option>`; ALL_CLASSES.forEach(c => ci.innerHTML += `<option value="${c}">${c} 班学生</option>`); ci.innerHTML += `<option value="${UNASSIGNED_CLASS}">⚠️ 待分配/已剥离</option>`; ci.value = cls; ci.disabled=false; } 
+        document.getElementById('modal-student').classList.remove('hidden'); document.getElementById('modal-student').classList.add('flex'); 
+    }
+    
+// ================= 🌟 带有防呆拦截的学生保存引擎 =================
+    window.saveStudent = async () => { 
+        const id = document.getElementById('form-std-id').value.trim().toUpperCase(); 
+        if(!id) return window.showToast("证件号必填", "warning"); 
+        
+        window.showToast("核验身份库中...", "loading"); 
+        const fc = document.getElementById('form-std-class').value; 
+        
+        try {
+            // 🌟 如果此时学号输入框不是被禁用状态（代表是新增模式，而非编辑模式）
+            if (!document.getElementById('form-std-id').disabled) {
+                const checkSnap = await getDoc(doc(db, "students", id));
+                if (checkSnap.exists()) {
+                    alert(`🚨 拦截警告！\n\n证件号/学号 [ ${id} ] 已被注册使用。\n注册人：${checkSnap.data().nameCn || checkSnap.data().nameEn}\n\n请更换证件号！`);
+                    return window.showToast("注册失败：证件号重复", "error");
+                }
+            }
+
+            window.showToast("写入中...", "loading"); 
+            await setDoc(doc(db,"students",id), {nameCn:document.getElementById('form-std-namecn').value, nameEn:document.getElementById('form-std-nameen').value, className:fc}, {merge:true}); 
+            window.showToast("档案保存成功", "success"); 
+            window.closeModal('student'); 
+            window.loadStudents(); 
+        } catch (e) { 
+            window.showToast("保存失败，请检查网络", "error"); 
+        } 
+    }
+    
+    window.handleExcelUpload = (e) => { 
+        const f = e.target.files[0]; if(!f) return; const r = new FileReader(); 
+        r.onload = async (evt) => { 
+            window.showToast("执行切片导入...", "loading"); 
+            try {
+                const wb = XLSX.read(evt.target.result, {type:'binary'}); const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); 
+                const chunkSize = 400; let totalCount = 0;
+                for (let i = 0; i < json.length; i += chunkSize) {
+                    const chunk = json.slice(i, i + chunkSize); const batch = writeBatch(db);
+                    chunk.forEach(row => { const id = row['学号']||row['证件号']; if(id) { batch.set(doc(db,"students",id.toString().trim().toUpperCase()), {nameCn:row['中文名']||'', nameEn:row['英文名']||'', className:currentUserRole==='teacher'?currentClass:(row['班级']||'未分配')}, {merge:true}); totalCount++; } });
+                    await batch.commit();
+                }
+                window.showToast(`成功导入 ${totalCount} 人`, "success"); window.loadStudents(); 
+            } catch (err) { window.showToast("Excel 解析失败", "error"); }
+        }; r.readAsBinaryString(f); 
+    }
+    
+    window.graduateYear6 = async () => { 
+        if(!confirm("⚠️ 将彻底删除 '班级' 中包含 '6' 的所有学生资料（含PRA六年级）。确认执行？")) return; window.showToast("执行净化协议...", "loading"); 
+        try {
+            const snap = await getDocs(collection(db,"students")); let idsToDelete = [];
+            snap.forEach(d => { if(d.data().className?.includes('6')) idsToDelete.push(d.id); });
+            if(idsToDelete.length === 0) return window.showToast("无六年级数据", "warning");
+            const chunkSize = 400;
+            for(let i=0; i<idsToDelete.length; i+=chunkSize) {
+                const chunk = idsToDelete.slice(i, i+chunkSize); const batch = writeBatch(db);
+                chunk.forEach(id => batch.delete(doc(db, "students", id))); await batch.commit();
+            }
+            window.showToast(`已移除 ${idsToDelete.length} 名毕业生`, "success"); window.loadStudents(); 
+        } catch (e) { window.showToast("执行失败", "error"); }
+    }
+
+    // 🌟🌟🌟 学年交接引擎 🌟🌟🌟
+    window.openTransitionModal = () => {
+        document.getElementById('modal-transition').classList.remove('hidden');
+        document.getElementById('modal-transition').classList.add('flex');
+    }
+
+    // 步骤一：毕业清理（增强版，排除PRA）
+    window.step1Graduate = async () => { 
+        if(!confirm("⚠️ 警告：系统即将彻底扫描并永久删除【班级】名称中包含数字 '6' 的所有学生档案（含PRA六年级）。\n\n您确定六年级已经毕业离校了吗？此操作绝不可逆！")) return; 
+        window.showToast("执行毕业净化协议...", "loading"); 
+        try {
+            const snap = await getDocs(collection(db,"students")); let idsToDelete = [];
+            snap.forEach(d => { const cls = d.data().className; if(cls && /^6[MK BHU]$/.test(cls)) idsToDelete.push(d.id); });
+            if(idsToDelete.length === 0) return window.showToast("未检测到六年级毕业生", "warning");
+            const chunkSize = 400;
+            for(let i=0; i<idsToDelete.length; i+=chunkSize) {
+                const chunk = idsToDelete.slice(i, i+chunkSize); const batch = writeBatch(db);
+                chunk.forEach(id => batch.delete(doc(db, "students", id))); await batch.commit();
+            }
+            window.showToast(`🎓 毕业典礼完成！已永久移除 ${idsToDelete.length} 名六年级学生（PRA不受影响）`, "success"); window.loadStudents(); 
+        } catch (e) { window.showToast("执行失败", "error"); }
+    }
+
+    // 步骤二：自动升班（PRA不参与）
+    window.step2AutoPromote = async () => {
+        if(!confirm("⚠️ 执行自动升班逻辑：系统将自动把全校 1-5 年级学生的班级数字加 1（例如：1B 变 2B，3K 变 4K）。\n\n请确认：如果你们学校是打散重新分班的，请不要用这个功能！确定执行吗？")) return;
+        window.showToast("正在执行全校升班...", "loading");
+        try {
+            const snap = await getDocs(collection(db,"students")); let idsToUpdate = [];
+            snap.forEach(d => { 
+                const cls = d.data().className;
+                if(cls && cls !== STAFF_CLASS && cls !== UNASSIGNED_CLASS && !cls.toUpperCase().includes('PRA')) {
+                    const newCls = cls.replace(/(\d+)/, (match) => parseInt(match) + 1);
+                    if(!newCls.includes('7')) { idsToUpdate.push({ id: d.id, newCls: newCls }); }
+                } 
+            });
+            if(idsToUpdate.length === 0) return window.showToast("没有检测到符合升班条件的学生", "warning");
+            const chunkSize = 400;
+            for(let i=0; i<idsToUpdate.length; i+=chunkSize) {
+                const chunk = idsToUpdate.slice(i, i+chunkSize); const batch = writeBatch(db);
+                chunk.forEach(item => batch.update(doc(db, "students", item.id), { className: item.newCls })); 
+                await batch.commit();
+            }
+            window.showToast(`🎉 升班完成！共处理了 ${idsToUpdate.length} 名学生的学籍跨年。`, "success"); window.loadStudents(); 
+        } catch(e) { window.showToast("升班逻辑中断", "error"); }
+    }
+
+    // ================== 🌟 NILAM 自动核算系统 (lastAINS版) ==================
+    const nKeys = ['digital','bukanBuku','fiksyen','bukanFiksyen','bm','bi','lain']; let cRStd = [];
+    // 拖拽填充全局状态
+    let dragFill = { active: false, key: '', startId: '' };
+
+    window.loadReadingList = async () => {
+        const m = document.getElementById('reading-month-select').value;
+        if (!m) return window.showToast("请指定月份", "warning");
+        window.showToast("提取快照...", "loading");
+        const y = m.split('-')[0];
+        document.getElementById('th-year').innerText = y + "年";
+        document.getElementById('batch-fill-bar').classList.remove('hidden');
+        document.getElementById('reading-list-container').classList.remove('hidden');
+        const tbody = document.getElementById('reading-table-body');
+        tbody.innerHTML = '<tr><td colspan="11" class="p-12 text-center text-blue-600 font-black"><i class="fa-solid fa-spinner fa-spin mr-3"></i>读取中...</td></tr>';
+
+        try {
+            // 🌟 扫描当年所有历史月份，找出每生历史最大AINS累计值作为锚点
+            // 逻辑：历史最大digital值 = lastAINS锚点（学生本子上学至今的累计读数）
+            const y = m.split('-')[0];
+            let allTimeAinsMap = {}; // { studentId: maxDigitalValue }
+
+            // 先用 students.lastAINS 做基准（如果存在且>0）
+            const stdSnap = await getDocs(query(collection(db, "students"), where("className", "==", currentClass)));
+            stdSnap.forEach(d => {
+                const s = d.data();
+                const ain = (s.lastAINS !== undefined && s.lastAINS > 0) ? s.lastAINS : 0;
+                allTimeAinsMap[d.id] = ain;
+            });
+
+            // 再扫描当年所有已存在的月份，比对出真正的历史最大值
+            // 最多回溯12个月（当年）
+            const [curY, curM2] = m.split('-').map(Number);
+            for (let mi = 1; mi <= 12; mi++) {
+                const mm = String(mi).padStart(2, '0');
+                const ms = `${curY}-${mm}`;
+                if (ms >= m) break; // 不扫描当月及之后
+                const snap = await getDoc(doc(db, "monthlyRecords", `${currentClass}_${ms}`));
+                if (!snap.exists()) continue;
+                const rec = snap.data().records || {};
+                Object.keys(rec).forEach(sid => {
+                    if (rec[sid] && rec[sid].digital !== undefined) {
+                        const val = rec[sid].digital || 0;
+                        if (val > (allTimeAinsMap[sid] || 0)) {
+                            allTimeAinsMap[sid] = val;
+                        }
+                    }
+                });
+            }
+
+            // 读取当月和上月数据（用于填充输入框）
+            const curSnap = await getDoc(doc(db, "monthlyRecords", `${currentClass}_${m}`));
+            const curD = curSnap.exists() ? curSnap.data().records : {};
+            const prevM = getPrevMonthStr(m);
+            const prevSnap = await getDoc(doc(db, "monthlyRecords", `${currentClass}_${prevM}`));
+            const prevD = prevSnap.exists() ? prevSnap.data().records : {};
+            const oldNetSnap = await getDoc(doc(db, "monthlyNetReads", `${currentClass}_${m}`));
+            const oldNetD = oldNetSnap.exists() ? oldNetSnap.data().records : {};
+
+            cRStd = [];
+            stdSnap.forEach(d => {
+                let s = d.data();
+                if (!s.lifetimeTotal) s.lifetimeTotal = 0;
+                if (!s.yearlyTotals) s.yearlyTotals = {};
+                // 🌟 历史最大 AINS 锚点：扫描所有历史月份得出（最可靠）
+                s.lastAINS = allTimeAinsMap[s.id] || 0;
+                cRStd.push({ id: d.id, ...s });
+            });
+
+            // A-Z 排序
+            cRStd.sort((a, b) => {
+                const enA = (a.nameEn || '').toUpperCase();
+                const enB = (b.nameEn || '').toUpperCase();
+                return enA.localeCompare(enB);
+            });
+
+            // 构建行
+            let htmlStr = '';
+            cRStd.forEach(s => {
+                let yearTotal = s.yearlyTotals[y] || 0;
+                let row = `<tr id="row_${s.id}" class="transition border-b hover:bg-blue-50"><td class="p-2 border font-mono font-bold text-center">${s.id}</td><td class="p-2 border font-black text-blue-800 text-center">${formatName(s.nameEn, s.nameCn)}</td><td class="p-2 border bg-yellow-50 text-center font-black text-yellow-700 text-xl">${yearTotal}</td><td class="p-2 border bg-orange-50 text-center font-black text-orange-700 text-xl">${s.lifetimeTotal}</td>`;
+                nKeys.forEach(k => {
+                    // ✅ valToShow 从 monthlyRecords（当月已存值）读取，不是从 students 读！
+                    let valToShow = 0;
+                    if (curD && curD[s.id] !== undefined && curD[s.id][k] !== undefined) {
+                        valToShow = curD[s.id][k];
+                    } else if (k === 'digital') {
+                        // 当月无数据：① 上月值 ② students.lastAINS
+                        valToShow = (prevD && prevD[s.id] && prevD[s.id][k] !== undefined) ? prevD[s.id][k] : s.lastAINS;
+                    }
+                    // 🌟 baseDig：新月份用 lastAINS；已有当月数据时也用 lastAINS（锚点永远钉在此）
+                    const baseDig = k === 'digital' ? s.lastAINS : 0;
+                    // data-old-net：来自 monthlyNetReads（当月已上报给图书馆的净增量）
+                    const oldNetVal = (oldNetD && oldNetD[s.id] && oldNetD[s.id][k] !== undefined) ? oldNetD[s.id][k] : 0;
+                    const rowClass = k === 'digital' ? 'bg-blue-50' : '';
+                    row += `<td class="p-1 border">
+                        <div class="nilam-input-wrap" id="wrap_${s.id}_${k}">
+                            <input type="number" min="0" id="r_${s.id}_${k}" value="${valToShow}"
+                                data-base-dig="${baseDig}"
+                                data-old-net="${oldNetVal}"
+                                data-student-id="${s.id}"
+                                data-key="${k}"
+                                class="w-full text-center border-2 p-2 font-black focus:border-blue-600 bg-blue-50 rounded outline-none transition nilam-input ${rowClass}"
+                                oninput="document.getElementById('row_${s.id}').classList.remove('bg-red-100')"
+                                onmousedown="window.dragFillMouseDown(event,'${s.id}','${k}')">
+                            <div class="nilam-fill-handle" id="handle_${s.id}_${k}"></div>
+                        </div>
+                    </td>`;
+                });
+                htmlStr += row + '</tr>';
+            });
+
+            tbody.innerHTML = cRStd.length === 0
+                ? '<tr><td colspan="11" class="text-center text-red-500 font-bold p-8">本班暂无学生档案</td></tr>'
+                : htmlStr;
+
+            // 🌟 全局拖拽填充事件（document级，只在按住鼠标时生效）
+            document.onmouseup = window.dragFillMouseUp;
+            document.onmousemove = window.dragFillMouseMove;
+
+            window.showToast(`就绪！共 ${cRStd.length} 名学生，基准已锁定`, "success");
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="11" class="text-center text-red-500 p-8">连接中断</td></tr>';
+        }
+    };
+
+    // ===== 🌟 拖拽填充：鼠标按下手柄 ==============================
+    window.dragFillMouseDown = (e, studentId, key) => {
+        // 只有点到手柄才启动拖拽
+        const handleId = `handle_${studentId}_${key}`;
+        const wrapId = `wrap_${studentId}_${key}`;
+        const handle = document.getElementById(handleId);
+        const wrap = document.getElementById(wrapId);
+        if (!handle || !wrap) return;
+        const handleRect = handle.getBoundingClientRect();
+        // 点击位置是否在手柄范围内
+        const inHandle = e.clientX >= handleRect.left && e.clientX <= handleRect.right &&
+                         e.clientY >= handleRect.top && e.clientY <= handleRect.bottom;
+        if (!inHandle) return;
+
+        e.preventDefault();
+        dragFill = { active: true, key, startId: studentId };
+        wrap.classList.add('dragging');
+        const input = document.getElementById(`r_${studentId}_${key}`);
+        if (input) input.classList.add('fill-dragging');
+    };
+
+    window.dragFillMouseMove = (e) => {
+        if (!dragFill.active) return;
+        const { key, startId } = dragFill;
+        // 找到startId对应的行索引
+        const startIdx = cRStd.findIndex(s => s.id === startId);
+        if (startIdx < 0) return;
+
+        // 获取当前鼠标下哪个格子
+        const elements = document.elementsFromPoint(e.clientX, e.clientY);
+        let targetInput = null;
+        for (const el of elements) {
+            if (el.classList && el.classList.contains('nilam-input') && el.dataset.key === key) {
+                targetInput = el;
+                break;
+            }
+        }
+        if (!targetInput) return;
+
+        const targetId = targetInput.dataset.studentId;
+        if (targetId === startId) return;
+
+        const targetIdx = cRStd.findIndex(s => s.id === targetId);
+        if (targetIdx < 0 || targetIdx <= startIdx) return;
+
+        // 向下拖：从start复制值到当前行（含）
+        const srcVal = document.getElementById(`r_${startId}_${key}`).value || 0;
+        for (let i = startIdx + 1; i <= targetIdx; i++) {
+            const sid = cRStd[i].id;
+            const inp = document.getElementById(`r_${sid}_${key}`);
+            if (inp) {
+                inp.value = srcVal;
+                inp.classList.add('fill-dragging');
+                setTimeout(() => inp.classList.remove('fill-dragging'), 300);
+            }
+        }
+    };
+
+    window.dragFillMouseUp = () => {
+        if (!dragFill.active) return;
+        // 清理所有高亮
+        document.querySelectorAll('.nilam-input-wrap.dragging').forEach(w => w.classList.remove('dragging'));
+        document.querySelectorAll('.fill-dragging').forEach(i => i.classList.remove('fill-dragging'));
+        dragFill = { active: false, key: '', startId: '' };
+    };
+
+    // ===== 🌟 批量工具栏 ==============================
+    // 工具栏输入框 oninput：实时把值显示（不做自动填充）
+    window.batchFillOnInput = () => {};
+
+    // 点击"填入整列"：把工具栏该列的值填入所有学生的对应格子
+    window.batchFillColumn = (key) => {
+        const srcVal = document.getElementById(`bf_${key}`).value;
+        if (srcVal === '' || srcVal === null) return window.showToast("请先在上方输入框填入数值", "warning");
+        let filled = 0;
+        cRStd.forEach(s => {
+            const inp = document.getElementById(`r_${s.id}_${key}`);
+            if (inp) { inp.value = srcVal; filled++; }
+        });
+        window.showToast(`已填入 ${filled} 格`, "success");
+    };
+
+    // 点击"清空"：把该列全部清空
+    window.batchFillClear = (key) => {
+        let cleared = 0;
+        cRStd.forEach(s => {
+            const inp = document.getElementById(`r_${s.id}_${key}`);
+            if (inp) { inp.value = ''; cleared++; }
+        });
+        document.getElementById(`bf_${key}`).value = '';
+        window.showToast(`已清空 ${cleared} 格`, "success");
+    };
+
+    // ===== 🌟 保存逻辑 ==============================
+    window.saveReadingStats = async () => {
+        const m = document.getElementById('reading-month-select').value;
+        const y = m.split('-')[0];
+
+        // ✅ BAHAN === BAHASA 校验
+        let hasError = false;
+        let errorMsg = "🛑 拦截：[BAHAN] 与 [BAHASA] 必须相等：\n\n";
+        cRStd.forEach(s => {
+            const digInput = parseInt(document.getElementById(`r_${s.id}_digital`).value) || 0;
+            const baseDig = parseInt(document.getElementById(`r_${s.id}_digital`).getAttribute('data-base-dig')) || 0;
+            const deltaDig = Math.max(0, digInput - baseDig);
+            const buk = parseInt(document.getElementById(`r_${s.id}_bukanBuku`).value) || 0;
+            const fik = parseInt(document.getElementById(`r_${s.id}_fiksyen`).value) || 0;
+            const bFik = parseInt(document.getElementById(`r_${s.id}_bukanFiksyen`).value) || 0;
+            const bm = parseInt(document.getElementById(`r_${s.id}_bm`).value) || 0;
+            const bi = parseInt(document.getElementById(`r_${s.id}_bi`).value) || 0;
+            const lain = parseInt(document.getElementById(`r_${s.id}_lain`).value) || 0;
+            const tBahan = deltaDig + buk + fik + bFik;
+            const tBahasa = bm + bi + lain;
+            if (tBahan !== tBahasa) {
+                hasError = true;
+                errorMsg += `❌ [${formatName(s.nameEn, s.nameCn)}] : Bahan(${tBahan}) != Bahasa(${tBahasa})\n`;
+                document.getElementById(`row_${s.id}`).classList.add('bg-red-100');
+            }
+        });
+        if (hasError) return window.showToast("数据核验失败！", "error"), alert(errorMsg);
+
+        window.showToast("写入核算中...", "loading");
+        try {
+            const batch = writeBatch(db);
+            let monthlyInput = {};
+            let netToLibrary = {};
+
+            cRStd.forEach(s => {
+                const oldLifetime = s.lifetimeTotal || 0;
+                const oldYearly = s.yearlyTotals[y] || 0;
+                const oldLastAINS = s.lastAINS || 0;
+
+                const digInput = parseInt(document.getElementById(`r_${s.id}_digital`).value) || 0;
+                // 🌟 锚点基准来自 students.lastAINS（不变，存于data-base-dig）
+                const baseDig = parseInt(document.getElementById(`r_${s.id}_digital`).getAttribute('data-base-dig')) || 0;
+                // 🌟 净增量 = 当前输入 - lastAINS锚点
+                const deltaDig = Math.max(0, digInput - baseDig);
+
+                monthlyInput[s.id] = {};
+                netToLibrary[s.id] = {};
+                let totalBahanThisMonth = 0;
+
+                nKeys.forEach(k => {
+                    const inputVal = parseInt(document.getElementById(`r_${s.id}_${k}`).value) || 0;
+                    monthlyInput[s.id][k] = inputVal;
+                    // BAHAN列的净增量 = AINS用deltaDig，其他直接用inputVal
+                    netToLibrary[s.id][k] = k === 'digital' ? deltaDig : inputVal;
+                    // 统计当月BAHAN净增量（用于当年总计）
+                    if (['digital', 'bukanBuku', 'fiksyen', 'bukanFiksyen'].includes(k)) {
+                        totalBahanThisMonth += (k === 'digital' ? deltaDig : inputVal);
+                    }
+                });
+
+                // 🌟 当年总计 = 历史值 + 当月BAHAN净增量
+                const newYearly = Math.max(0, oldYearly + totalBahanThisMonth);
+                // 🌟 历史总计 = 重算（当年总计就是全部，因为按年清零）
+                const newLifetime = Math.max(0, oldLifetime + totalBahanThisMonth);
+
+                // 🌟 同步写回 students.lastAINS（作为下个月的基准锚点）
+                batch.update(doc(db, "students", s.id), {
+                    lifetimeTotal: newLifetime,
+                    yearlyTotals: { ...s.yearlyTotals, [y]: newYearly },
+                    lastAINS: digInput
+                });
+            });
+
+            // 写月度原始输入
+            batch.set(doc(db, "monthlyRecords", `${currentClass}_${m}`),
+                { class: currentClass, month: m, records: monthlyInput }, { merge: true });
+            // 写月度净增量（供图书馆报表用）
+            batch.set(doc(db, "monthlyNetReads", `${currentClass}_${m}`),
+                { class: currentClass, month: m, records: netToLibrary }, { merge: true });
+
+            await batch.commit();
+            window.showToast("✅ 保存成功！基准锚点已更新", "success");
+            window.loadReadingList();
+        } catch (e) {
+            window.showToast("保存失败：" + e.message, "error");
+        }
+    };
+
+    // ================== 5. 管理员监控与统计系统 ==================
+    window.loadAdminNilam = async () => {
+        const cls = document.getElementById('admin-nilam-filter').value; 
+        const dateInput = document.getElementById('admin-nilam-date').value;
+        const tbody = document.getElementById('admin-nilam-tbody');
+        
+        if(!cls || cls === 'ALL') { tbody.innerHTML = '<tr><td colspan="4" class="p-12 text-center text-gray-400 font-bold">请选择班级查看</td></tr>'; document.getElementById('print-admin-class').innerText = ""; return; }
+        if(!dateInput) return window.showToast("请在日历中选择年份", "warning");
+
+        const curYear = dateInput.split('-')[0]; 
+        document.getElementById('print-admin-class').innerText = cls; document.getElementById('print-admin-year').innerText = curYear;
+        tbody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-purple-600"><i class="fa-solid fa-spinner fa-spin mr-2"></i>读取中...</td></tr>';
+        
+        try {
+            const snap = await getDocs(query(collection(db, "students"), where("className", "==", cls)));
+            
+            let adminStudents = [];
+            snap.forEach(d => adminStudents.push({ id: d.id, ...d.data() }));
+            adminStudents.sort((a, b) => {
+                const enA = (a.nameEn || '').toUpperCase(); const enB = (b.nameEn || '').toUpperCase();
+                return enA.localeCompare(enB);
+            });
+
+            let htmlStr = '';
+            adminStudents.forEach(s => { 
+                const yearTotal = s.yearlyTotals ? (s.yearlyTotals[curYear] || 0) : 0; const lifeTotal = s.lifetimeTotal || 0; 
+                let badgeClass = lifeTotal > 200 ? 'bg-orange-600 text-white shadow-lg' : 'bg-orange-100 text-orange-700'; 
+                htmlStr += `<tr class="border-b hover:bg-gray-50"><td class="p-4 font-mono font-bold">${s.id}</td><td class="p-4 font-black text-blue-800 text-lg">${formatName(s.nameEn, s.nameCn)}</td><td class="p-4 text-center font-black text-yellow-600 text-2xl">${yearTotal}</td><td class="p-4 text-center font-black"><span class="${badgeClass} px-4 py-1 rounded-full text-xl">${lifeTotal}</span></td></tr>`; 
+            });
+            tbody.innerHTML = htmlStr || '<tr><td colspan="4" class="text-center p-8 text-red-500 font-bold">该班无记录</td></tr>';
+        } catch (e) { tbody.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-red-500">连接失败</td></tr>'; }
+    }
+
+    window.generateReport = async () => {
+        const m = document.getElementById('report-month').value; if(!m) return window.showToast("指定查询月份", "warning");
+        document.getElementById('report-content').classList.remove('hidden'); document.getElementById('print-report-month').innerText = m;
+        window.showToast("全校汇算中...", "loading");
+        try {
+            const snap = await getDocs(query(collection(db, "monthlyNetReads"), where("month", "==", m))); let sums = {digital:0,bukanBuku:0,fiksyen:0,bukanFiksyen:0,bm:0,bi:0,lain:0};
+            snap.forEach(d => { const r=d.data().records; for(let i in r) nKeys.forEach(k=>sums[k]+=r[i][k]||0); });
+            nKeys.forEach(k=>document.getElementById(`r-${k}`).innerText=sums[k]);
+            const b = sums.digital+sums.bukanBuku+sums.fiksyen+sums.bukanFiksyen; const l = sums.bm+sums.bi+sums.lain;
+            document.getElementById('r-totalBahan').innerText=b; document.getElementById('r-totalBahasa').innerText=l;
+            
+            const sSnap = await getDocs(query(collection(db,"students"), where("className", "!=", STAFF_CLASS))); 
+            document.getElementById('r-totalStudents').innerText=`实测学生人数: ${sSnap.size}`; document.getElementById('r-purata').innerText=(b/(sSnap.size||1)).toFixed(2); window.showToast("生成完毕","success");
+        } catch (e) { window.showToast("生成崩溃", "error"); }
+    }
+
+    window.loadOverdueBooks = async () => {
+        const tbody = document.getElementById('overdue-table-body'); tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-red-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>排查中...</td></tr>';
+        try {
+            const snap = await getDocs(query(collection(db, "books"), where("status", "==", "out")));
+            let overdues = []; const todayT = new Date(getStandardDate()).getTime();
+            snap.forEach(d => { const b = d.data(); if (b.dueDate) { const dueT = new Date(b.dueDate).getTime(); if (todayT > dueT) overdues.push({id: d.id, days: Math.ceil((todayT - dueT)/(1000*60*60*24)), ...b}); } });
+            overdues.sort((a,b) => b.days - a.days); 
+            let htmlStr = '';
+            if(overdues.length===0) { tbody.innerHTML = '<tr><td colspan="7" class="p-12 text-center text-green-600 font-black text-lg">全校无逾期图书</td></tr>'; return; }
+            overdues.forEach(b => { 
+                let severityClass = b.days > 30 ? 'bg-red-800' : 'bg-red-500'; 
+                htmlStr += `<tr class="hover:bg-red-50 border-b"><td class="p-3 font-mono font-black text-red-700">${b.id}</td><td class="p-3 font-black text-blue-800">《${b.title}》</td><td class="p-3 font-black">${b.borrowerName||'未知'} <span class="text-xs text-white bg-gray-600 px-1 rounded">${b.borrowerClass||'-'}</span></td><td class="p-3 text-sm">${b.borrowDate||'-'}</td><td class="p-3 font-black text-red-600">${b.dueDate}</td><td class="p-3"><span class="${severityClass} text-white px-2 py-1 rounded font-black text-xs">超期 ${b.days} 天</span></td><td class="p-3 print-hidden"><button onclick="window.showToast('已下发通知', 'success')" class="bg-yellow-500 text-white px-3 py-1 rounded text-xs font-bold">催还</button></td></tr>`; 
+            });
+            tbody.innerHTML = htmlStr;
+        } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-red-500">扫描中断</td></tr>'; }
+    }
+
+    window.loadBorrowLogs = async () => {
+        const sD = document.getElementById('log-start-date').value; const eD = document.getElementById('log-end-date').value;
+        const tbody = document.getElementById('borrow-logs-tbody'); tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-pink-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>加载流水...</td></tr>';
+        const printDateSpan = document.getElementById('print-log-date'); if (printDateSpan) printDateSpan.innerText = sD && eD ? `(${sD} 至 ${eD})` : "(所有历史)";
+
+        try {
+            const snap = await getDocs(query(collection(db, "borrowLogs"), orderBy("timestamp", "desc"))); 
+            let htmlStr = ''; let count = 0;
+            snap.forEach(d => {
+                const r = d.data(); if (sD && r.dateStr < sD) return; if (eD && r.dateStr > eD) return; count++;
+                const badge = r.action === 'borrow' ? '<span class="bg-red-500 text-white px-2 py-1 rounded text-xs font-black">借出</span>' : '<span class="bg-green-500 text-white px-2 py-1 rounded text-xs font-black">归还</span>';
+                htmlStr += `<tr class="border-b hover:bg-gray-50"><td class="p-3 font-mono text-sm">${r.dateStr} <span class="text-gray-400">${r.timeStr}</span></td><td class="p-3">${badge}</td><td class="p-3 font-black text-sm">${r.studentName} <span class="text-[10px] text-gray-500 bg-gray-200 px-1 rounded">${r.className}</span></td><td class="p-3 font-mono text-sm text-gray-500">${r.bookId}</td><td class="p-3 text-blue-700 font-bold truncate max-w-[200px]">《${r.bookTitle}》</td></tr>`;
+            });
+            tbody.innerHTML = count === 0 ? '<tr><td colspan="5" class="p-12 text-center text-gray-400 font-bold">查无记录</td></tr>' : htmlStr;
+        } catch (e) { tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-500">获取失败</td></tr>'; }
+    }
+
+    window.logLibraryVisit = async () => {
+        if (!currentClass || currentClass === 'ALL') return window.showToast("仅限班主任打卡！", "error");
+        window.showToast("写入中...", "loading");
+        const today = new Date(); const dateStr = getStandardDate(today); const timeStr = today.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        try {
+            await addDoc(collection(db, "libraryVisits"), { className: currentClass, dateStr: dateStr, timeStr: timeStr, timestamp: serverTimestamp() });
+            document.getElementById('dash-last-log').innerHTML = `<span class="text-green-600">✅ 最近打卡：${dateStr} ${timeStr}</span>`; window.showToast("打卡成功", "success");
+        } catch (error) { window.showToast("打卡失败", "error"); }
+    }
+    
+    window.loadUsageLogs = async () => {
+        const sD = document.getElementById('usage-start-date').value; const eD = document.getElementById('usage-end-date').value;
+        const tbody = document.getElementById('usage-table-body'); tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-orange-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>加载中...</td></tr>';
+        const printUsageSpan = document.getElementById('print-usage-date'); if (printUsageSpan) printUsageSpan.innerText = (sD && eD) ? `(${sD} 至 ${eD})` : "(所有)";
+
+        try {
+            const snap = await getDocs(query(collection(db, "libraryVisits"), orderBy("timestamp", "desc")));
+            let htmlStr = ''; let count = 0;
+            snap.forEach(doc => {
+                const r = doc.data(); if (sD && r.dateStr < sD) return; if (eD && r.dateStr > eD) return; count++;
+                htmlStr += `<tr class="border-b hover:bg-orange-50"><td class="p-4 font-mono text-gray-600">${r.dateStr}</td><td class="p-4 font-bold text-orange-600">${r.timeStr}</td><td class="p-4 font-bold text-blue-700 text-lg">${r.className}</td></tr>`;
+            });
+            tbody.innerHTML = count === 0 ? '<tr><td colspan="3" class="p-8 text-center text-gray-400">无记录</td></tr>' : htmlStr;
+        } catch (error) { tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-red-500">拉取失败</td></tr>'; }
+    }
+</script>
+</body>
+</html>
