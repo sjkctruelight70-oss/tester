@@ -1,0 +1,132 @@
+<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>B1 跨 Project 授权测试 v3</title><style>
+*{box-sizing:border-box}body{font:15px system-ui,sans-serif;background:#f3f5f8;color:#172b4d;margin:0}main{max-width:800px;margin:auto;padding:20px}section{background:white;border:1px solid #dbe2ee;border-radius:14px;padding:20px;margin:14px 0}h1{font-size:25px;margin:0}h2{font-size:19px;margin:0 0 12px}p{line-height:1.5}small,.muted{color:#526078}input,button,select{font:inherit;padding:10px 13px;border:1px solid #bdc8d6;border-radius:8px;margin:3px 0}input{width:100%}button{background:white;color:#172b4d;cursor:pointer}button.primary{background:#2057ba;color:white;border-color:#2057ba}button.danger{color:#a12530;border-color:#e0a8ae}button:disabled{opacity:.45;cursor:default}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6fa;padding:10px;border-radius:8px;font-size:13px}article{border-top:1px solid #e0e6ee;padding:15px 0}article:last-child{padding-bottom:0}.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between}.buttons{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pill{font-size:12px;border-radius:20px;padding:4px 9px;background:#edf1f5;color:#42546a}.active{background:#e5f5ea;color:#17643b}.pending{background:#fff1d6;color:#78500a}.revoked{background:#fbe9e9;color:#982d37}.partial{background:#fff1d6;color:#78500a}.notice{padding:11px;background:#edf3fc;border-radius:8px;margin:10px 0;overflow-wrap:anywhere}details{margin-top:10px;font-size:13px;color:#526078;overflow-wrap:anywhere}summary{cursor:pointer}.result{padding:9px 0;border-bottom:1px solid #e5e9f0}.result:last-child{border-bottom:0}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.metrics div{background:#f3f5f8;padding:10px;border-radius:8px;text-align:center}.metrics strong{display:block;font-size:23px}.name{font-weight:700;font-size:17px}@media(max-width:480px){main{padding:12px}section{padding:14px}.buttons button{flex:1}.metrics{font-size:12px}}
+</style><main><h1>Pengurusan Peranti · 设备管理</h1><p class="muted">跨 Project v3 · Koko: tester-960da · Library: tester-2-f6895 · 仅测试资料 · App Check 未开启</p><section><h2>老师设备</h2><label for="label">设备备注</label><input id="label" maxlength="80" placeholder="例如：办公室电脑"><div class="buttons"><button id="apply" class="primary">申请授权</button><button id="check">检查状态</button></div><div id="device" class="notice" role="status">请申请授权或检查状态。</div><details><summary>安全测试工具</summary><p>未授权及撤销后应拒绝读取和写入；批准后应成功。自行批准测试必须被拒绝。仅在测试项目操作。网络错误不算权限拒绝。</p><div class="buttons"><button id="probe">测试正常写入</button><button id="direct">直接测试写入 Rules</button><button id="readDirect">直接测试读取 Rules</button><button id="selfGrant">测试自行批准（仅待批准设备）</button></div></details></section><section><h2>管理员</h2><div class="buttons"><button id="loginK">登录比赛管理</button><button id="loginL">登录图书馆管理</button><button id="logout">退出</button></div><div id="admin" class="notice" role="status">请完成两个管理员登录。</div><div class="row"><h2 style="margin:0">设备名单</h2><button id="refresh" class="primary">刷新名单</button></div><div id="counts" class="metrics"></div><label for="filter">显示：</label> <select id="filter"><option value="all">全部设备</option><option value="pending">待处理 / 部分授权</option><option value="active">已授权</option><option value="revoked">已撤销</option></select><div id="requests"></div></section><small>批准前请核对老师身份及完整申请码。两个 Project 的写入不是原子操作，部分失败需重试。本页不能替代正式业务安全规则。</small></main><script type="module">
+const firebaseConfig = {
+  "apiKey": "AIzaSyDkfpxetTnF_ITAWgTlPAcXmlLt-okfm7c",
+  "authDomain": "tester-960da.firebaseapp.com",
+  "databaseURL": "https://tester-960da-default-rtdb.firebaseio.com",
+  "projectId": "tester-960da",
+  "storageBucket": "tester-960da.firebasestorage.app",
+  "messagingSenderId": "855636743334",
+  "appId": "1:855636743334:web:1744ca707e3076a7b75067"
+};
+const libraryFirebaseConfig = {
+  "apiKey": "AIzaSyBouHKQjI8NGc9OSFP6SEnFXVw_oSlgjII",
+  "authDomain": "tester-2-f6895.firebaseapp.com",
+  "projectId": "tester-2-f6895",
+  "storageBucket": "tester-2-f6895.firebasestorage.app",
+  "messagingSenderId": "208466113490",
+  "appId": "1:208466113490:web:f30378d49e0c34e1f98e0b"
+};
+const config={koko:{firebase:firebaseConfig,appCheckSiteKey:""},library:{firebase:libraryFirebaseConfig,appCheckSiteKey:""}};
+if(config.koko.firebase.projectId===config.library.firebase.projectId)throw Error("跨 Project 测试配置错误");
+
+// Pure, independently testable pairing and two-project operation logic.
+function validateRequest(r){return !!r && typeof r.uid==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(r.uid) && typeof r.code==='string' && /^[A-F0-9]{24}$/.test(r.code) && typeof r.label==='string' && r.label.length>=1 && r.label.length<=80;}
+function pairRequests(left,right){
+ const group=new Map();
+ for(const [side,items] of [['koko',left],['library',right]])for(const r of items){if(!validateRequest(r))continue;const p=group.get(r.code)||{code:r.code,koko:[],library:[]};p[side].push(r);group.set(r.code,p);}
+ return [...group.values()].map(p=>({...p,paired:p.koko.length===1&&p.library.length===1&&p.koko[0].label===p.library[0].label}));
+}
+function grantMatches(request,grant){return !!request&&!!grant&&grant.code===request.code&&grant.active===true;}
+function overall(k,l){return k==='active'&&l==='active'?'active':k==='revoked'||l==='revoked'?'revoked':k==='active'||l==='active'?'partial':'pending';}
+async function applyPair(pair,active,adapters){
+ if(active&&!pair.paired)throw Error('审批需要唯一、完整的两端申请');
+ if(!pair.code||!Array.isArray(pair.koko)||!Array.isArray(pair.library))throw Error('无效申请');
+ const jobs=[];
+ for(const side of ['koko','library'])for(const req of pair[side]){if(!validateRequest(req)||req.code!==pair.code)throw Error('申请码不一致');jobs.push({side,uid:req.uid,run:()=>adapters[side].setGrant(req.uid,req.code,active)});}
+ const results=await Promise.allSettled(jobs.map(j=>Promise.resolve().then(j.run)));
+ return results.map((r,i)=>({side:jobs[i].side,uid:jobs[i].uid,ok:r.status==='fulfilled',error:r.status==='rejected'?String(r.reason?.code||r.reason?.message||'failed'):null}));
+}
+
+import {initializeApp,getApps} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import {getAuth,setPersistence,browserLocalPersistence,browserSessionPersistence,signInAnonymously,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,signOut} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import {getDatabase,ref,get,set,onValue,serverTimestamp as rtime} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+import {getFirestore,doc,collection,getDocFromServer,getDocsFromServer,setDoc,onSnapshot,serverTimestamp as ftime} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import {initializeAppCheck,ReCaptchaEnterpriseProvider} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js';
+
+
+const sides=['koko','library'];
+const waitAuth=auth=>new Promise((resolve,reject)=>{let stop=()=>{};stop=onAuthStateChanged(auth,u=>{stop();resolve(u)},e=>{stop();reject(e)})});
+const makeCode=()=>Array.from(crypto.getRandomValues(new Uint8Array(12)),x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();
+const clients=new Map();
+function client(side,admin=false){
+ if(!sides.includes(side))throw Error('unknown project');const c=config[side],name=`school-${admin?'admin':'device'}-${side}`;
+ if(clients.has(name))return clients.get(name);
+ if(!c?.firebase?.apiKey||!c.firebase.projectId||!c.firebase.appId||(side==='koko'&&!c.firebase.databaseURL))throw Error('请先填写测试 Firebase Web 配置');
+ const app=getApps().find(a=>a.name===name)||initializeApp(c.firebase,name);
+ if(c.appCheckSiteKey)initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(c.appCheckSiteKey),isTokenAutoRefreshEnabled:true});
+ const auth=getAuth(app),db=side==='koko'?getDatabase(app):getFirestore(app);
+ const read=async(path,id)=>side==='koko'?(await get(ref(db,`${path}/${id}`))).val():((await getDocFromServer(doc(db,path,id))).data()||null);
+ const list=async(path)=>side==='koko'?Object.entries((await get(ref(db,path))).val()||{}).map(([uid,v])=>({...v,uid})):(await getDocsFromServer(collection(db,path))).docs.map(d=>({...d.data(),uid:d.id}));
+ const write=(path,id,value)=>side==='koko'?set(ref(db,`${path}/${id}`),value):setDoc(doc(db,path,id),value);
+ const stamp=()=>side==='koko'?rtime():ftime();
+ const result={side,app,auth,db,read,list,write,stamp,async setGrant(uid,code,active){await write('deviceGrants',uid,{code,active,updatedAt:stamp(),updatedBy:auth.currentUser.uid})}};
+ clients.set(name,result);return result;
+}
+async function deviceSession(side){const c=client(side);await setPersistence(c.auth,browserLocalPersistence);let user=await waitAuth(c.auth);if(!user)user=(await signInAnonymously(c.auth)).user;if(!user.isAnonymous)throw Error('设备会话不是匿名身份');return {...c,uid:user.uid};}
+async function getPair(){const entries=await Promise.all(sides.map(async side=>{const c=await deviceSession(side);const req=await c.read('deviceRequests',c.uid);const grant=await c.read('deviceGrants',c.uid);return [side,{...c,req,grant,active:grantMatches(req,grant)}]}));return Object.fromEntries(entries);}
+async function requestPair(label){
+ label=String(label||'').trim();if(!label||label.length>80)throw Error('请输入设备备注（1–80字符）');
+ const p=await getPair(),prior=sides.map(s=>p[s].req).filter(Boolean);
+ if(prior.length&&prior.some(x=>x.code!==prior[0].code||x.label!==prior[0].label))throw Error('已有不一致申请，请联系管理员，不自动更换身份');
+ const code=prior[0]?.code||makeCode(),savedLabel=prior[0]?.label||label;
+ const results=await Promise.allSettled(sides.map(async side=>{const c=p[side];if(!c.req)await c.write('deviceRequests',c.uid,{code,label:savedLabel,createdAt:c.stamp()});}));
+ if(results.some(r=>r.status==='rejected'))throw Error('申请尚未完整写入，请重试；已有申请会保留');return code;
+}
+async function loginAdmin(side){const c=client(side,true);await setPersistence(c.auth,browserSessionPersistence);await waitAuth(c.auth);const u=(await signInWithPopup(c.auth,new GoogleAuthProvider())).user;const allowed=await c.read('deviceAdmins',u.uid);if(allowed?.active!==true){await signOut(c.auth);throw Error('首次设置：Google 登录成功，UID='+u.uid+'。尚未建立管理员白名单，请按教程设置后重新登录。');}return u.uid;}
+async function adminClients(){const result={};for(const s of sides){const c=client(s,true);const u=await waitAuth(c.auth);if(!u||u.isAnonymous||(await c.read('deviceAdmins',u.uid))?.active!==true)throw Error('请先完成两个 Project 的管理员登录');result[s]=c;}return result;}
+async function adminList(){const c=await adminClients();const [a,b]=await Promise.all(sides.map(async side=>{const x=c[side];const [r,g]=await Promise.all([x.list('deviceRequests'),x.list('deviceGrants')]);const m=new Map(g.map(y=>[y.uid,y]));return r.map(y=>({...y,status:grantMatches(y,m.get(y.uid))?'active':m.get(y.uid)?.active===false?'revoked':'pending'}));}));return pairRequests(a,b);}
+async function adminChange(code,active){const c=await adminClients();const p=(await adminList()).find(x=>x.code===code);if(!p)throw Error('找不到申请');return applyPair(p,active,c);}
+async function logoutAdmins(){await Promise.all(sides.map(s=>signOut(client(s,true).auth)));}
+// Call BEFORE starting any business database readers. Return the named app's DB.
+// If either project's authorization is missing, fail closed. Rules independently enforce local grants.
+async function requireDeviceAccess(onBlocked){
+ const p=await getPair();if(!sides.every(s=>p[s].active))throw Error('设备尚未在两个 Project 获得授权');
+ let blocked=false;const fail=()=>{if(!blocked){blocked=true;onBlocked?.();}};const stop=[];
+ for(const s of sides){const c=p[s];const check=g=>{if(!grantMatches(c.req,g))fail()};if(s==='koko')stop.push(onValue(ref(c.db,`deviceGrants/${c.uid}`),v=>check(v.val()),fail));else stop.push(onSnapshot(doc(c.db,'deviceGrants',c.uid),{includeMetadataChanges:true},v=>{if(!v.metadata.fromCache)check(v.data())},fail));stop.push(onAuthStateChanged(c.auth,u=>{if(!u||u.uid!==c.uid)fail()}));}
+ return {koko:p.koko,library:p.library,dispose:()=>stop.forEach(f=>f())};
+}
+
+
+const $=id=>document.getElementById(id);
+const show=(id,v)=>$(id).textContent=typeof v==='string'?v:JSON.stringify(v,null,2);
+const element=(tag,txt,cls)=>{const e=document.createElement(tag);if(txt!==undefined)e.textContent=txt;if(cls)e.className=cls;return e};
+const sideLabel={koko:'比赛 / 课外活动（RTDB）',library:'图书馆（Firestore）'};
+const stateText={active:'已授权',pending:'待批准',revoked:'已撤销',partial:'部分授权 / 待处理',missing:'无申请'};
+function pill(status){return element('span',stateText[status]||status,'pill '+status)}
+function action(id,out,fn){$(id).onclick=async()=>{const b=$(id);b.disabled=true;try{await fn()}catch(e){show(out,'操作失败：'+String(e.code||e.message||e))}finally{b.disabled=false}}}
+async function status(){const p=await getPair(), target=$('device');target.replaceChildren();for(const s of sides){const row=element('div',undefined,'row result'),x=p[s];row.append(element('span',sideLabel[s]),pill(!x.req?'missing':x.active?'active':x.grant?.active===false?'revoked':'pending'));target.append(row)}const codes=[...new Set(sides.map(s=>p[s].req?.code).filter(Boolean))];if(codes.length){const d=element('details');d.append(element('summary','申请码（交给管理员核对）'),element('p',codes.join(' / ')));target.append(d)}if(sides.every(s=>p[s].active))target.prepend(element('strong','三个系统均已授权'));}
+function displayResults(results,successText="写入成功",deniedText="权限拒绝"){const target=$('device');target.replaceChildren();results.forEach((r,i)=>{const code=String(r.reason?.code||r.reason?.message||'');const denied=/permission[_ -]?denied|insufficient permissions/i.test(code);const row=element('div',undefined,'row result');row.append(element('span',sideLabel[sides[i]]),element('strong',r.status==='fulfilled'?successText:denied?deniedText:'其他错误', 'pill '+(r.status==='fulfilled'?'active':denied?'revoked':'partial')));target.append(row);if(r.status==='rejected')target.append(element('small',code));});}
+action('apply','device',async()=>{await requestPair($('label').value);await status()});action('check','device',status);
+action('probe','device',async()=>{const p=await requireDeviceAccess(()=>show('device','授权状态已变更，请停止操作并重新载入'));try{displayResults(await Promise.allSettled([p.koko.write('deviceTest',p.koko.uid,'B1 TEST'),p.library.write('deviceTest',p.library.uid,{value:'B1 TEST'})]));}finally{p.dispose()}});
+action('direct','device',async()=>displayResults(await Promise.allSettled(sides.map(async side=>{const p=await deviceSession(side);await p.write('deviceTest',p.uid,side==='koko'?'B1 TEST':{value:'B1 TEST'});}))));
+// Server-side read probe, rather than accepting a cached RTDB result.
+async function serverProbeRead(c){
+ if(c.side==='library')return c.read('deviceTest',c.uid);
+ const token=await c.auth.currentUser.getIdToken();
+ const url=new URL(config.koko.firebase.databaseURL.replace(/\/$/,'')+'/deviceTest/'+encodeURIComponent(c.uid)+'.json');
+ url.searchParams.set('auth',token);
+ const response=await fetch(url,{cache:'no-store',referrerPolicy:'no-referrer'});
+ if(!response.ok){const body=await response.json().catch(()=>({}));const detail=String(body.error||'');if(/permission denied/i.test(detail))throw Error('PERMISSION_DENIED');throw Error('RTDB HTTP '+response.status);}
+ return response.json();
+}
+action('readDirect','device',async()=>displayResults(await Promise.allSettled(sides.map(async side=>serverProbeRead(await deviceSession(side)))),'服务器允许读取'));
+action('selfGrant','device',async()=>{
+ const p=await getPair();
+ if(sides.some(s=>!p[s].req||p[s].grant))throw Error('请使用全新的待批准测试设备（两端已申请但均无授权记录）');
+ if(!confirm('仅测试虚构设备：尝试以普通匿名身份自行批准。两端必须拒绝。继续？'))return;
+ const results=await Promise.allSettled(sides.map(s=>p[s].setGrant(p[s].uid,p[s].req.code,true)));
+ displayResults(results,'异常：自行批准成功，停止测试并撤销','通过：自行批准被拒绝');
+ if(results.some(r=>r.status==='fulfilled'))$('device').prepend(element('strong','安全测试失败：不要投入正式使用。请管理员撤销该测试设备。'));
+});
+const loginState={koko:false,library:false};
+function loginMessage(){show('admin',sides.map(s=>sideLabel[s]+': '+(loginState[s]?'管理员已验证':'尚未验证')).join('；'));}
+action('loginK','admin',async()=>{await loginAdmin('koko');loginState.koko=true;loginMessage()});action('loginL','admin',async()=>{await loginAdmin('library');loginState.library=true;loginMessage()});
+let cached=[];let busy=false;
+action('logout','admin',async()=>{await logoutAdmins();loginState.koko=loginState.library=false;cached=[];$('requests').replaceChildren();$('counts').replaceChildren();show('admin','已退出')});
+function groupState(p){const a=[...p.koko,...p.library];if(p.paired&&a.every(r=>r.status==='active'))return 'active';if(p.paired&&a.every(r=>r.status==='revoked'))return 'revoked';if(p.paired&&a.every(r=>r.status==='pending'))return 'pending';return 'partial'}
+function paint(){const counts=$('counts');counts.replaceChildren();for(const [title,keys] of [['待处理',['pending','partial']],['已授权',['active']],['已撤销',['revoked']]]){const c=element('div');c.append(element('strong',String(cached.filter(p=>keys.includes(groupState(p))).length)),element('span',title));counts.append(c)}const target=$('requests');target.replaceChildren();const f=$('filter').value;const rows=cached.filter(p=>f==='all'||groupState(p)===f||(f==='pending'&&groupState(p)==='partial'));if(!rows.length){target.append(element('p','没有符合条件的设备。','muted'));return;}for(const p of rows){const st=groupState(p),a=[...p.koko,...p.library];const article=element('article'),row=element('div',undefined,'row');row.append(element('span',[...new Set(a.map(r=>r.label))].join(' / '),'name'),pill(st));article.append(row);const per=element('div',undefined,'buttons');for(const s of sides){const statuses=p[s].map(r=>stateText[r.status]);per.append(element('small',sideLabel[s]+'：'+(statuses.join(' / ')||'无申请')))}article.append(per);const details=element('details');details.append(element('summary','申请码及技术详情'),element('p','申请码：'+p.code));for(const s of sides)details.append(element('p',sideLabel[s]+'：'+(p[s].map(r=>r.uid+' · '+r.status).join(', ')||'无申请')));article.append(details);const controls=element('div',undefined,'buttons');for(const active of [true,false]){if(active&&st==='active'||!active&&st==='revoked')continue;const b=element('button',active?(st==='partial'?'重试批准':'批准'):(st==='partial'?'重试撤销':'撤销'),active?'primary':'danger');b.disabled=busy||(active&&!p.paired);b.onclick=async()=>{if(busy)return;if(!confirm((active?'确认已核对老师身份及完整申请码，并批准：':'确认撤销：')+a.map(r=>r.label).filter((v,i,x)=>x.indexOf(v)===i).join(' / ')+'\n申请码：'+p.code))return;busy=true;paint();try{const results=await adminChange(p.code,active);const msg=results.map(r=>sideLabel[r.side]+'：'+(r.ok?'成功':'失败 '+r.error)).join('；');await render();show('admin',(results.every(r=>r.ok)?'操作成功：':'存在失败，请重试：')+msg)}catch(e){show('admin','操作或刷新失败：'+String(e.code||e.message||e))}finally{busy=false;paint()}};controls.append(b)}article.append(controls);target.append(article)}}
+async function render(){cached=await adminList();loginState.koko=loginState.library=true;paint();show('admin','读取成功：RTDB 与 Firestore 均已返回名单，共 '+cached.length+' 组设备。');}
+$('filter').onchange=paint;action('refresh','admin',render);
+</script></html>
