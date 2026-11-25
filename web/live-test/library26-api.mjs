@@ -1,6 +1,0 @@
-import {bindIdle,openSession,verify,loginAdmin} from './firebase-read-bridge.mjs';
-import {doc,collection,query,where,getDocFromServer,getDocsFromServer,runTransaction,serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-import {libraryWriter} from './library-sdk.mjs';import {createNilamWriter} from './nilam-safe.mjs';import {createLibrary26} from './library26-core.mjs';
-export {loginAdmin};
-export async function connect(role){const s=await openSession(role),k=s.koko,l=s.library,ku=k.auth.currentUser?.uid,lu=l.auth.currentUser?.uid;const valid=async()=>{if(!ku||!lu||k.auth.currentUser?.uid!==ku||l.auth.currentUser?.uid!==lu||l.app.options.projectId!=='tester-2-f6895')throw Error('SESSION_CHANGED');await verify(s);if(k.auth.currentUser?.uid!==ku||l.auth.currentUser?.uid!==lu)throw Error('SESSION_CHANGED');};await valid();const db=l.db,sdk={doc,collection,runTransaction,serverTimestamp};return bindIdle(createLibrary26({verify:valid,read:async(c,id)=>(await getDocFromServer(doc(db,c,id))).data()??null,readClass:async cls=>(await getDocsFromServer(query(collection(db,'students'),where('className','==',cls)))).docs.map(d=>({id:d.id,data:d.data()})),loanWrite:libraryWriter(db,sdk).loan,nilamWrite:createNilamWriter(db,sdk)}),s);
-}
