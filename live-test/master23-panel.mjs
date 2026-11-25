@@ -25,9 +25,9 @@ const syncBtn=button('Selaras / 同步或重试',()=>run(async()=>{if(!window.co
 input.onchange=()=>invalidate('Fail dipilih / 已选文件，请重新预览。');
 root.append(loginK,loginL,el('hr'),input,previewBtn,label,saveBtn,syncBtn,status,result);controls();
 window.addEventListener('offline',()=>invalidate('Rangkaian terputus / 网络中断；请重新检查服务器状态。'));
-document.addEventListener('visibilitychange',()=>{if(document.hidden)invalidate('Sesi disembunyikan / 页面切换后请重新预览。');});
+/* Keep in-memory form on tab switches; server authorization and offline handling remain. */
 
-const annualRoot=document.createElement("section");annualRoot.id="annual29-root";root.after(annualRoot);annual=mountAnnual(annualRoot,getApi,{blocked:()=>busy,onBusy:v=>{annualBusy=v;if(v)invalidate('Semak semula selepas operasi tahun / 年度操作后请重新预览主档。');else controls();}});
+const annualRoot=document.createElement("section");annualRoot.id="annual29-root";root.after(annualRoot);annual=mountAnnual(annualRoot,getApi,{blocked:()=>busy,onBusy:(v,mutates)=>{annualBusy=v;if(v&&mutates)invalidate('Semak semula selepas operasi tahun / 年度操作后请重新预览主档。');else controls();}});
 if(modal){
  const opener=document.querySelector('#p-master-open');
  const reset=()=>{invalidate('Sila semak semula / 请重新读取。');input.value='';annual.reset();};
