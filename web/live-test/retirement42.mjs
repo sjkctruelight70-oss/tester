@@ -1,0 +1,6 @@
+import {key,metadata,staffSnapshot} from './library37-core.mjs';
+import {same} from './library-core.mjs';
+const check=(v,m)=>{if(!v)throw Error(m)};
+export const retired=(kind,d)=>kind==='books'?d?.status==='retired':d?.status==='inactive';
+export function retirementSnapshot(kind,d){check(['books','students'].includes(kind)&&d,'INVALID_TARGET');return kind==='books'?{metadata:metadata(d),status:d.status,borrowerId:d.borrowerId??null,lastLoanEvent:d.lastLoanEvent??null,retirement:d.retirement??null}:{identity:staffSnapshot(d),status:d.status??'active',retirement:d.retirement??null};}
+export function retirementPlan({kind,id,old,expected,meta,slot,actor,at}){key(id);check(meta?.loanIndexReady===true,'LOAN_INDEX_NOT_READY');check(typeof actor==='string'&&actor.length>0,'ADMIN_REQUIRED');check(old&&same(retirementSnapshot(kind,old),expected),'STALE_RETIREMENT');check(!old.retirement&&!retired(kind,old),'ALREADY_RETIRED');if(kind==='books'){check(old.status==='in'&&['borrowerId','borrowerName','borrowerClass','borrowDate','dueDate'].every(k=>old[k]==null),'BOOK_ON_LOAN_OR_INCONSISTENT');}else{check(old.className==='TEACHER'&&(old.status??'active')==='active','STAFF_ONLY');check(slot===null,'STAFF_HAS_OPEN_LOAN');}return {status:kind==='books'?'retired':'inactive',retirement:{actor,at}};}
