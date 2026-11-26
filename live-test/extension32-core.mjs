@@ -1,3 +1,4 @@
+import {attendanceScore} from './attendance-score-v5.mjs';
 import {decodeEventYear} from './event-master.mjs';
 import {analysis,categories} from './competition.mjs';
 import {pglReview} from './pgl-review.mjs';
@@ -36,7 +37,7 @@ export function project({meta,header,raw,library,libraryMeta,studentId,officialN
   const score=scores[studentId+'~'+i];
   const reminder=review.find(r=>r.category===categories[i]);
   if(entries(raw.memberships).some(([,h])=>h.studentId===studentId&&h.category===cat&&h.active===false))issues.push({category:cat,reason:'TRANSFER_ATTENDANCE_REVIEW_REQUIRED'});
-  activity.push({category:cat,groupId:g.id,activityName:g.name,officialName:label,jawatan:m.jawatan,present,recorded,attendanceForPortal:Math.min(present,12),pgl:score?.pgl??'-',m_pgl:score?.m_pgl??0,pcp:score?.pcp??'-',m_pcp:score?.m_pcp??0,reminder:reminder?{highestLevel:reminder.extension.level,highestLevelMark:reminder.extension.mark,highestMark:reminder.best.mark,difference:reminder.difference}:null});
+  activity.push({category:cat,groupId:g.id,activityName:g.name,officialName:label,jawatan:m.jawatan,present,recorded,attendanceForPortal:attendanceScore(present).portalCount,attendanceMark:attendanceScore(present).mark,attendanceRemaining:attendanceScore(present).remaining,pgl:score?.pgl??'-',m_pgl:score?.m_pgl??0,pcp:score?.pcp??'-',m_pcp:score?.m_pcp??0,reminder:reminder?{highestLevel:reminder.extension.level,highestLevelMark:reminder.extension.mark,highestMark:reminder.best.mark,difference:reminder.difference}:null});
  }
  let nilam=null;const d=library?.data;
  if(libraryMeta?.activeYear!==year||libraryMeta?.nilamReady!==true||libraryMeta?.syncLock||(libraryMeta?.nilamMode??'legacy')!=='legacy'||library?.id!==studentId||d?.masterYear!==year||d?.masterRevision!==meta.masterRevision||d?.className!==s.className||d?.nameEn!==s.nameEn||d?.nameCn!==(s.nameCn??'')||!Number.isSafeInteger(d?.lifetimeTotal)||d.lifetimeTotal<0)issues.push({category:'NILAM',reason:'LIBRARY_SYNC_OR_TOTAL_REVIEW_REQUIRED'});
